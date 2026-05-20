@@ -20,6 +20,23 @@
 namespace fs = std::filesystem;
 using namespace chargerlog;
 
+// ── Windows 中文字符路径修复 ────────────────────────────────────────
+#ifdef _WIN32
+#include <windows.h>
+/// 将命令行参数字符串 (系统 ANSI 编码, 如 GBK) 转为 fs::path (UTF-16)
+static fs::path path_from_arg(const char* arg) {
+    int len = MultiByteToWideChar(CP_ACP, 0, arg, -1, nullptr, 0);
+    std::wstring wstr(len, L'\0');
+    MultiByteToWideChar(CP_ACP, 0, arg, -1, &wstr[0], len);
+    wstr.resize(len - 1);
+    return fs::path(wstr);
+}
+#else
+static fs::path path_from_arg(const char* arg) {
+    return fs::path(arg);
+}
+#endif
+
 // ── 工具函数 ───────────────────────────────────────────────────────
 
 /// 判断文件是否可能是文本 (跳过二进制文件)
@@ -109,7 +126,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    fs::path log_dir = argv[1];
+    fs::path log_dir = path_from_arg(argv[1]);
 
     // ── 1. 扫描目录, 解析所有日志 ──────────────────────────
     HealthdParser parser;
