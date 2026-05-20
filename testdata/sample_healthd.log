@@ -1,0 +1,25 @@
+# 模拟 healthd 日志 (带时间戳前缀)
+01-01 00:00:05.123  1234  5678 I healthd: battery l=65 v=3920 t=28.5 h=2 st=2 c=1200 chg=450
+01-01 00:00:10.456  1234  5678 I healthd: battery l=65 v=3915 t=28.6 h=2 st=2 c=1200 chg=430
+01-01 00:00:15.789  1234  5678 I healthd: battery l=66 v=3930 t=28.8 h=2 st=2 c=1201 chg=460
+01-01 00:00:20.012  1234  5678 I healthd: battery l=66 v=3925 t=29.0 h=2 st=2 c=1201 chg=440
+01-01 00:00:25.345  1234  5678 I healthd: battery l=67 v=3940 t=29.2 h=2 st=2 c=1202 chg=470
+01-01 00:00:30.678  1234  5678 I healthd: battery l=67 v=3935 t=29.5 h=2 st=2 c=1202 chg=450
+01-01 00:00:35.901  1234  5678 I healthd: battery l=68 v=3945 t=29.7 h=2 st=2 c=1203 chg=480
+01-01 00:00:40.234  1234  5678 I healthd: battery l=68 v=3950 t=29.8 h=2 st=2 c=1203 chg=460
+01-01 00:00:45.567  1234  5678 I healthd: battery l=69 v=3955 t=30.0 h=2 st=2 c=1204 chg=490
+01-01 00:00:50.890  1234  5678 I healthd: battery l=69 v=3960 t=30.1 h=2 st=2 c=1204 chg=470
+01-01 00:00:55.123  1234  5678 I healthd: battery l=70 v=3965 t=30.2 h=2 st=2 c=1205 chg=500
+01-01 00:01:00.456  1234  5678 I healthd: battery l=70 v=3970 t=30.3 h=2 st=2 c=1205 chg=480
+01-01 00:05:00.123  1234  5678 I healthd: battery l=75 v=4010 t=31.0 h=2 st=2 c=1210 chg=520
+01-01 00:10:00.456  1234  5678 I healthd: battery l=80 v=4050 t=31.5 h=2 st=2 c=1215 chg=550
+01-01 00:15:00.789  1234  5678 I healthd: battery l=84 v=4080 t=32.0 h=2 st=2 c=1220 chg=530
+01-01 00:20:00.012  1234  5678 I healthd: battery l=88 v=4110 t=32.5 h=2 st=2 c=1225 chg=560
+01-01 00:25:00.345  1234  5678 I healthd: battery l=91 v=4130 t=32.8 h=2 st=2 c=1230 chg=540
+01-01 00:30:00.678  1234  5678 I healthd: battery l=94 v=4150 t=33.0 h=2 st=2 c=1235 chg=570
+01-01 00:35:00.901  1234  5678 I healthd: battery l=96 v=4160 t=33.2 h=2 st=2 c=1240 chg=550
+01-01 00:40:00.234  1234  5678 I healthd: battery l=98 v=4170 t=33.3 h=2 st=2 c=1245 chg=580
+01-01 00:45:00.567  1234  5678 I healthd: battery l=99 v=4180 t=33.4 h=2 st=2 c=1250 chg=560
+01-01 00:50:00.890  1234  5678 I healthd: battery l=100 v=4190 t=33.5 h=2 st=2 c=1255 chg=590
+01-01 00:55:00.123  1234  5678 I healthd: battery l=100 v=4195 t=33.5 h=2 st=5 c=1260 chg=0
+01-01 00:60:00.456  1234  5678 I healthd: battery l=100 v=4200 t=33.4 h=2 st=5 c=1265 chg=0
