@@ -73,7 +73,7 @@ static void collect_points(
 
     std::ifstream file(file_path);
     if (!file.is_open()) {
-        std::cerr << "  [跳过] 无法打开: " << file_path << std::endl;
+        std::cerr << "  [跳过] 无法打开: " << file_path.u8string() << std::endl;
         return;
     }
 
@@ -90,7 +90,7 @@ static void collect_points(
         }
     }
 
-    std::cout << "  " << file_path.filename().string()
+    std::cout << "  " << file_path.filename().u8string()
               << ": " << line_count << " 行, "
               << parsed_count << " 个健康数据点" << std::endl;
 }
@@ -102,11 +102,11 @@ static void scan_directory(
     std::vector<ChargerDataPoint>& out_points) {
 
     if (!fs::exists(dir_path) || !fs::is_directory(dir_path)) {
-        std::cerr << "错误: 目录不存在或不是目录: " << dir_path << std::endl;
+        std::cerr << "错误: 目录不存在或不是目录: " << dir_path.u8string() << std::endl;
         return;
     }
 
-    std::cout << "\n扫描目录: " << dir_path << std::endl;
+    std::cout << "\n扫描目录: " << dir_path.u8string() << std::endl;
 
     for (const auto& entry : fs::recursive_directory_iterator(dir_path)) {
         if (!entry.is_regular_file()) continue;
@@ -120,7 +120,16 @@ static void scan_directory(
 
 // ── 主入口 ─────────────────────────────────────────────────────────
 
+static void setup_console() {
+#ifdef _WIN32
+    // 让 Windows 终端正确显示 UTF-8 中文
+    SetConsoleOutputCP(CP_UTF8);
+#endif
+}
+
 int main(int argc, char* argv[]) {
+    setup_console();
+
     if (argc != 2) {
         std::cerr << "用法: chargerlog <日志目录>" << std::endl;
         return 1;
