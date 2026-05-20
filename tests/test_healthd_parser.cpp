@@ -70,6 +70,25 @@ static bool test_parse_invalid_line() {
     return true;
 }
 
+static bool test_parse_healthd_pid_format() {
+    HealthdParser parser;
+    // 实际日志格式: healthd(    0): 中间插了 PID
+    std::string line = "04-06 14:59:52.490 W/.(7)[527:health@2.1-serv]healthd(    0): battery l=0 v=4151 t=30.8 h=2 st=3 c=-918900 fc=2946000 cc=0 chg=";
+
+    auto opt = parser.parseLine(line);
+    ASSERT(opt.has_value(), "healthd(pid): format should parse");
+
+    const auto& pt = opt.value();
+    ASSERT(pt.timestamp_str == "04-06 14:59:52.490", "timestamp");
+    ASSERT(std::abs(pt.battery_level_pct - 0.0) < 0.01,  "level = 0%");
+    ASSERT(std::abs(pt.battery_voltage_mv - 4151.0) < 0.01, "voltage = 4151 mV");
+    ASSERT(std::abs(pt.battery_temperature_c - 30.8) < 0.01, "temp = 30.8 C");
+    // chg= 空值 → 应返回 NAN 而非 crash
+    ASSERT(std::isnan(pt.battery_current_ma), "chg=empty → NAN");
+
+    return true;
+}
+
 static bool test_parse_partial_data() {
     HealthdParser parser;
     // 只包含部分字段
@@ -167,6 +186,7 @@ int main() {
     all_pass &= TEST(can_parse_healthd_line);
     all_pass &= TEST(parse_basic_healthd);
     all_pass &= TEST(parse_invalid_line);
+    all_pass &= TEST(parse_healthd_pid_format);
     all_pass &= TEST(parse_partial_data);
     all_pass &= TEST(available_fields);
     all_pass &= TEST(data_point_has_get);

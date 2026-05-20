@@ -16,6 +16,7 @@
 
 #include "chargerlog/healthd_parser.h"
 #include "chargerlog/base_charger_parser.h"
+#include "chargerlog/cache_manager.h"
 
 namespace fs = std::filesystem;
 using namespace chargerlog;
@@ -71,6 +72,11 @@ static void collect_points(
     const HealthdParser& parser,
     std::vector<ChargerDataPoint>& out_points) {
 
+    // 跳过缓存文件自身
+    if (file_path.filename() == ".chargerlog_cache") {
+        return;
+    }
+
     std::ifstream file(file_path);
     if (!file.is_open()) {
         std::cerr << "  [跳过] 无法打开: " << file_path.u8string() << std::endl;
@@ -92,7 +98,7 @@ static void collect_points(
 
     std::cout << "  " << file_path.filename().u8string()
               << ": " << line_count << " 行, "
-              << parsed_count << " 个健康数据点" << std::endl;
+              << parsed_count << " 个充电数据点" << std::endl;
 }
 
 /// 递归扫描目录
@@ -130,25 +136,57 @@ static void setup_console() {
 int main(int argc, char* argv[]) {
     setup_console();
 
-    if (argc != 2) {
-        std::cerr << "用法: chargerlog <日志目录>" << std::endl;
+    // ── 参数解析 ───────────────────────────────────────────
+    bool no_cache = false;
+    fs::path log_dir;
+
+    if (argc == 3 && std::string(argv[1]) == "--no-cache") {
+        no_cache = true;
+        log_dir = path_from_arg(argv[2]);
+    } else if (argc == 2) {
+        log_dir = path_from_arg(argv[1]);
+    } else {
+        std::cerr << "用法: chargerlog [--no-cache] <日志目录>" << std::endl;
         return 1;
     }
-
-    fs::path log_dir = path_from_arg(argv[1]);
 
     // ── 1. 扫描目录, 解析所有日志 ──────────────────────────
     HealthdParser parser;
     std::vector<ChargerDataPoint> all_points;
 
-    scan_directory(log_dir, parser, all_points);
+    // 缓存查找
+    uint64_t cache_fp = 0;
+    if (!no_cache) {
+        cache_fp = CacheManager::computeFingerprint(log_dir);
+        if (cache_fp != 0) {
+            auto cached = CacheManager::load(
+                log_dir / CacheManager::DEFAULT_CACHE_FILENAME, cache_fp);
+            if (cached.has_value()) {
+                all_points = std::move(cached.value());
+                std::cout << "\n从缓存加载 " << all_points.size() << " 个充电数据点" << std::endl;
+            }
+        }
+    }
+
+    // 缓存未命中时扫描
+    if (all_points.empty()) {
+        scan_directory(log_dir, parser, all_points);
+
+        // 扫描后写入缓存
+        if (!all_points.empty() && !no_cache && cache_fp != 0) {
+            CacheManager::save(
+                log_dir / CacheManager::DEFAULT_CACHE_FILENAME, cache_fp, all_points);
+        }
+    }
 
     if (all_points.empty()) {
-        std::cout << "\n未找到有效的健康数据点。" << std::endl;
+        std::cout << "\n未找到充电数据点。" << std::endl;
         return 0;
     }
 
-    std::cout << "\n总计: " << all_points.size() << " 个数据点" << std::endl;
+    if (no_cache || cache_fp == 0) {
+        std::cout << "\n总计: " << all_points.size() << " 个数据点" << std::endl;
+    }
 
     // ── 2. 计算统计 ────────────────────────────────────────
     auto voltage_stats = StatsCalculator::calcField(all_points, "battery_voltage_mv");

@@ -58,8 +58,8 @@ std::string HealthdParser::platformName() const {
 }
 
 bool HealthdParser::canParse(const std::string& line) const {
-    // 检测是否包含 "healthd:" 关键字
-    return line.find("healthd:") != std::string::npos;
+    // 匹配 healthd(pid): 或 healthd: 两种格式
+    return line.find("healthd") != std::string::npos;
 }
 
 std::optional<ChargerDataPoint> HealthdParser::parseLine(const std::string& line) const {
@@ -70,8 +70,6 @@ std::optional<ChargerDataPoint> HealthdParser::parseLine(const std::string& line
     ChargerDataPoint pt;
 
     // ── 提取原始时间戳 ─────────────────────────────────
-    // Android logcat 时间戳通常在行首: "01-01 00:00:05.123 ..."
-    // 也支持纯时间格式 "00:00:05.123" 或时间戳在前12个字符内
     std::regex ts_re(R"(^(\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{3}))");
     std::smatch ts_match;
     if (std::regex_search(line, ts_match, ts_re)) {
@@ -79,14 +77,20 @@ std::optional<ChargerDataPoint> HealthdParser::parseLine(const std::string& line
         pt.elapsed_ms = parseTimestampToMs(pt.timestamp_str);
     }
 
-    // ── 提取 healthd 关键字后的 k=v ─────────────────────
-    auto pos = line.find("healthd:");
-    if (pos == std::string::npos) {
+    // ── 提取 healthd 后第一个冒号后面的 k=v ────────────
+    // 兼容: "healthd: battery ..." 和 "healthd(    0): battery ..."
+    auto healthd_pos = line.find("healthd");
+    if (healthd_pos == std::string::npos) {
         return std::nullopt;
     }
 
-    std::string after_healthd = line.substr(pos + 8);  // 跳过 "healthd:"
-    auto kv = parseKeyValuePairs(after_healthd);
+    auto colon_pos = line.find(':', healthd_pos);
+    if (colon_pos == std::string::npos) {
+        return std::nullopt;
+    }
+
+    std::string after_colon = line.substr(colon_pos + 1);
+    auto kv = parseKeyValuePairs(after_colon);
 
     // ── 字段映射 ──────────────────────────────────────
     auto readField = [&](const std::string& key) -> double {

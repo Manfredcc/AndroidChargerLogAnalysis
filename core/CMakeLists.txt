@@ -10,6 +10,7 @@ add_library(chargerlog_core
     src/healthd_parser.cpp
     src/stats_calculator.cpp
     src/project_config.cpp
+    src/cache_manager.cpp
 )
 
 target_include_directories(chargerlog_core
@@ -32,5 +33,13 @@ add_executable(test_healthd_parser
 
 target_link_libraries(test_healthd_parser PRIVATE chargerlog_core)
 target_include_directories(test_healthd_parser
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+add_executable(test_cache_manager
+    ${PROJECT_SOURCE_DIR}/../tests/test_cache_manager.cpp
+)
+target_link_libraries(test_cache_manager PRIVATE chargerlog_core)
+target_include_directories(test_cache_manager
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
