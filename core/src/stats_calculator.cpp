@@ -110,4 +110,22 @@ std::vector<FieldStats> StatsCalculator::calcWindowedStats(
     return windows;
 }
 
+std::vector<ChargerDataPoint> StatsCalculator::downsample(
+    const std::vector<ChargerDataPoint>& points,
+    size_t target_count) {
+
+    if (target_count == 0) return {};
+    if (points.size() <= target_count) return points;
+
+    std::vector<ChargerDataPoint> result;
+    result.reserve(target_count);
+
+    for (size_t i = 0; i < target_count; i++) {
+        size_t idx = (i * (points.size() - 1)) / (target_count - 1);
+        result.push_back(points[idx]);
+    }
+
+    return result;
+}
+
 }  // namespace chargerlog

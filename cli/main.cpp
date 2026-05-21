@@ -211,6 +211,8 @@ int main(int argc, char* argv[]) {
     // ── 参数解析 ───────────────────────────────────────────
     bool no_cache = false;
     bool json_mode = false;
+    bool points_mode = false;
+    size_t downsample_count = 0;
     int64_t start_ms = 0;
     int64_t end_ms = INT64_MAX;
     fs::path log_dir;
@@ -221,6 +223,12 @@ int main(int argc, char* argv[]) {
             no_cache = true;
         } else if (arg == "--json") {
             json_mode = true;
+        } else if (arg == "--points") {
+            points_mode = true;
+            json_mode = true;
+        } else if (arg == "--downsample" && i + 1 < argc) {
+            i++;
+            downsample_count = static_cast<size_t>(std::stoull(argv[i]));
         } else if (arg == "--start" && i + 1 < argc) {
             i++;
             start_ms = parseTimeArg(argv[i]);
@@ -238,13 +246,13 @@ int main(int argc, char* argv[]) {
         } else if (arg[0] != '-') {
             log_dir = path_from_arg(argv[i]);
         } else {
-            std::cerr << "用法: chargerlog [--json] [--no-cache] [--start HH:MM:SS] [--end HH:MM:SS] <日志目录>" << std::endl;
+            std::cerr << "用法: chargerlog [--json] [--points] [--downsample N] [--no-cache] [--start HH:MM:SS] [--end HH:MM:SS] <日志目录>" << std::endl;
             return 1;
         }
     }
 
     if (log_dir.empty()) {
-        std::cerr << "用法: chargerlog [--json] [--no-cache] [--start HH:MM:SS] [--end HH:MM:SS] <日志目录>" << std::endl;
+        std::cerr << "用法: chargerlog [--json] [--points] [--downsample N] [--no-cache] [--start HH:MM:SS] [--end HH:MM:SS] <日志目录>" << std::endl;
         return 1;
     }
 
@@ -283,11 +291,19 @@ int main(int argc, char* argv[]) {
 
     if (all_points.empty()) {
         if (json_mode) {
-            std::cout << "{\"points_count\":0,\"cached\":false,\"time_range\":{\"start\":\"\",\"end\":\"\"},\"fields\":[]}\n";
+            std::cout << "{\"points_count\":0,\"cached\":false,\"time_range\":{\"start\":\"\",\"end\":\"\"},\"fields\":[],\"points\":[]}\n";
         } else {
             std::cout << "\n未找到充电数据点。" << std::endl;
         }
         return 0;
+    }
+
+    // ── 1.5 降采样 (作用于输出给前端的 points，不影响统计计算) ──
+    std::vector<ChargerDataPoint> output_points;
+    if (points_mode && downsample_count > 0 && all_points.size() > downsample_count) {
+        output_points = StatsCalculator::downsample(all_points, downsample_count);
+    } else if (points_mode) {
+        output_points = all_points;
     }
 
     // ── 2. 计算统计 (全部字段, 指定时间范围) ───────────────
@@ -326,8 +342,22 @@ int main(int argc, char* argv[]) {
             std::cout << "      \"median\": " << jsonDouble(st.median) << "\n";
             std::cout << "    }";
         }
-        std::cout << "\n  ]\n";
-        std::cout << "}\n";
+        std::cout << "\n  ]";
+        if (points_mode) {
+            std::cout << ",\n  \"points\": [\n";
+            for (size_t pi = 0; pi < output_points.size(); pi++) {
+                if (pi > 0) std::cout << ",\n";
+                const auto& pt = output_points[pi];
+                std::cout << "    {\"t\":" << pt.elapsed_ms
+                          << ",\"v\":" << jsonDouble(pt.battery_voltage_mv)
+                          << ",\"tmp\":" << jsonDouble(pt.battery_temperature_c)
+                          << ",\"cur\":" << jsonDouble(pt.battery_current_ma)
+                          << ",\"lvl\":" << jsonDouble(pt.battery_level_pct)
+                          << "}";
+            }
+            std::cout << "\n  ]";
+        }
+        std::cout << "\n}\n";
     } else {
         // 人类可读文本输出
         if (no_cache || cache_fp == 0) {

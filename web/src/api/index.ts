@@ -11,6 +11,14 @@ export interface FieldResult {
   median: number
 }
 
+export interface DataPoint {
+  t: number         // elapsed_ms
+  v: number | null   // battery_voltage_mv
+  tmp: number | null // battery_temperature_c
+  cur: number | null // battery_current_ma
+  lvl: number | null // battery_level_pct
+}
+
 export interface AnalysisResult {
   id: string
   log_dir: string
@@ -20,6 +28,7 @@ export interface AnalysisResult {
   start?: string
   end?: string
   fields: FieldResult[]
+  points: DataPoint[]
 }
 
 export interface HistoryItem {

@@ -94,6 +94,8 @@ def upload():
             start=start,
             end=end,
             no_cache=no_cache,
+            points=True,
+            downsample=500,
         )
     except FileNotFoundError as e:
         return jsonify({"error": str(e)}), 503
@@ -109,6 +111,7 @@ def upload():
         "points_count": result.get("points_count", 0),
         "cached": result.get("cached", False),
         "fields": result.get("fields", []),
+        "points": result.get("points", []),
     }
     _save_analysis(analysis_id, record)
 

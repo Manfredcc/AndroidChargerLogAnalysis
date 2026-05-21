@@ -58,6 +58,12 @@ public:
         const std::string& field,
         int64_t window_ms,
         int64_t step_ms);
+
+    /// 降采样：从 points 中等距取出最多 target_count 个点
+    /// 保证首尾点始终保留，适合前端折线图渲染
+    static std::vector<ChargerDataPoint> downsample(
+        const std::vector<ChargerDataPoint>& points,
+        size_t target_count);
 };
 
 }  // namespace chargerlog

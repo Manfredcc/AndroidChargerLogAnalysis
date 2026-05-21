@@ -30,6 +30,8 @@ def run_chargerlog(
     start: Optional[str] = None,
     end: Optional[str] = None,
     no_cache: bool = False,
+    points: bool = False,
+    downsample: int = 0,
     timeout: int = 120,
 ) -> dict[str, Any]:
     """调用 chargerlog 可执行文件解析日志目录。
@@ -39,6 +41,8 @@ def run_chargerlog(
         start: 起始时间 HH:MM:SS (可选)
         end: 结束时间 HH:MM:SS (可选)
         no_cache: 是否跳过缓存强制重新解析
+        points: 是否输出原始数据点 (用于时序图表)
+        downsample: 降采样目标点数 (0=不降采样)
         timeout: 子进程超时秒数
 
     Returns:
@@ -55,6 +59,10 @@ def run_chargerlog(
         )
 
     args = [str(_CHARGERLOG_BIN), "--json"]
+    if points:
+        args.append("--points")
+        if downsample > 0:
+            args.extend(["--downsample", str(downsample)])
     if no_cache:
         args.append("--no-cache")
     if start:
