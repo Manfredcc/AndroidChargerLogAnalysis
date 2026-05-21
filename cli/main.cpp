@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -124,6 +125,23 @@ static void scan_directory(
     }
 }
 
+// ── 字段显示信息 ──────────────────────────────────────────────
+
+struct FieldDisplay {
+    const char* name;   // ChargerDataPoint 字段名
+    const char* label;  // 中文显示名
+    const char* unit;   // 单位
+};
+
+static const FieldDisplay kAllFields[] = {
+    {"battery_voltage_mv",    "电池电压", "mV"},
+    {"battery_current_ma",    "电池电流", "mA"},
+    {"battery_temperature_c", "电池温度", "°C"},
+    {"battery_level_pct",     "电池电量", "%" },
+    {"bus_voltage_mv",        "VBUS电压", "mV"},
+    {"bus_current_ma",        "VBUS电流", "mA"},
+};
+
 // ── 主入口 ─────────────────────────────────────────────────────────
 
 static void setup_console() {
@@ -133,20 +151,67 @@ static void setup_console() {
 #endif
 }
 
+/// 解析 HH:MM:SS 为当日毫秒数
+static int64_t parseTimeArg(const std::string& s) {
+    int hh, mm, ss;
+    char c1, c2;
+    std::istringstream iss(s);
+    if (iss >> hh >> c1 >> mm >> c2 >> ss && c1 == ':' && c2 == ':') {
+        return static_cast<int64_t>(hh) * 3600000
+             + static_cast<int64_t>(mm) * 60000
+             + static_cast<int64_t>(ss) * 1000;
+    }
+    return -1;
+}
+
+/// 将毫秒数格式化为 HH:MM:SS
+static std::string msToHMS(int64_t ms) {
+    if (ms < 0) return "";
+    int h = static_cast<int>(ms / 3600000);
+    int m = static_cast<int>((ms % 3600000) / 60000);
+    int s = static_cast<int>((ms % 60000) / 1000);
+    char buf[16];
+    std::snprintf(buf, sizeof(buf), "%02d:%02d:%02d", h, m, s);
+    return buf;
+}
+
 int main(int argc, char* argv[]) {
     setup_console();
 
     // ── 参数解析 ───────────────────────────────────────────
     bool no_cache = false;
+    int64_t start_ms = 0;
+    int64_t end_ms = INT64_MAX;
     fs::path log_dir;
 
-    if (argc == 3 && std::string(argv[1]) == "--no-cache") {
-        no_cache = true;
-        log_dir = path_from_arg(argv[2]);
-    } else if (argc == 2) {
-        log_dir = path_from_arg(argv[1]);
-    } else {
-        std::cerr << "用法: chargerlog [--no-cache] <日志目录>" << std::endl;
+    for (int i = 1; i < argc; i++) {
+        std::string arg = argv[i];
+        if (arg == "--no-cache") {
+            no_cache = true;
+        } else if (arg == "--start" && i + 1 < argc) {
+            i++;
+            start_ms = parseTimeArg(argv[i]);
+            if (start_ms < 0) {
+                std::cerr << "错误: --start 需要 HH:MM:SS 格式" << std::endl;
+                return 1;
+            }
+        } else if (arg == "--end" && i + 1 < argc) {
+            i++;
+            end_ms = parseTimeArg(argv[i]);
+            if (end_ms < 0) {
+                std::cerr << "错误: --end 需要 HH:MM:SS 格式" << std::endl;
+                return 1;
+            }
+        } else if (arg[0] != '-') {
+            log_dir = path_from_arg(argv[i]);
+        } else {
+            std::cerr << "用法: chargerlog [--no-cache] [--start HH:MM:SS] [--end HH:MM:SS] <日志目录>" << std::endl;
+            return 1;
+        }
+    }
+
+    if (log_dir.empty()) {
+        std::cerr << "用法: chargerlog [--no-cache] [--start HH:MM:SS] [--end HH:MM:SS] <日志目录>" << std::endl;
         return 1;
     }
 
@@ -188,29 +253,35 @@ int main(int argc, char* argv[]) {
         std::cout << "\n总计: " << all_points.size() << " 个数据点" << std::endl;
     }
 
-    // ── 2. 计算统计 ────────────────────────────────────────
-    auto voltage_stats = StatsCalculator::calcField(all_points, "battery_voltage_mv");
-    auto temp_stats    = StatsCalculator::calcField(all_points, "battery_temperature_c");
+    // ── 2. 计算统计 (全部字段, 指定时间范围) ───────────────
+    std::vector<std::string> field_names;
+    for (auto& fd : kAllFields) {
+        field_names.push_back(fd.name);
+    }
+    auto all_stats = StatsCalculator::calcAllFields(all_points, field_names, start_ms, end_ms);
 
     // ── 3. 输出结果 ────────────────────────────────────────
     std::cout << "\n========== 统计结果 ==========" << std::endl;
-
-    if (voltage_stats.count > 0) {
-        std::cout << "电池电压:" << std::endl;
-        std::cout << "  最高: " << voltage_stats.max << " mV" << std::endl;
-        std::cout << "  最低: " << voltage_stats.min << " mV" << std::endl;
-        std::cout << "  平均: " << voltage_stats.avg << " mV" << std::endl;
-    } else {
-        std::cout << "电池电压: 无数据" << std::endl;
+    if (start_ms > 0 || end_ms < INT64_MAX) {
+        std::cout << "时间范围: " << msToHMS(start_ms)
+                  << " ~ " << msToHMS(end_ms) << std::endl;
     }
 
-    if (temp_stats.count > 0) {
-        std::cout << "电池温度:" << std::endl;
-        std::cout << "  最高: " << temp_stats.max << " °C" << std::endl;
-        std::cout << "  最低: " << temp_stats.min << " °C" << std::endl;
-        std::cout << "  平均: " << temp_stats.avg << " °C" << std::endl;
-    } else {
-        std::cout << "电池温度: 无数据" << std::endl;
+    bool any = false;
+    for (size_t i = 0; i < all_stats.size(); i++) {
+        const auto& st = all_stats[i];
+        const auto& fd = kAllFields[i];
+        if (st.count == 0) continue;
+        any = true;
+        std::cout << "\n" << fd.label << " (" << st.count << " 个数据点):" << std::endl;
+        std::cout << "  最高: " << st.max << " " << fd.unit << std::endl;
+        std::cout << "  最低: " << st.min << " " << fd.unit << std::endl;
+        std::cout << "  平均: " << st.avg << " " << fd.unit << std::endl;
+        std::cout << "  中位数: " << st.median << " " << fd.unit << std::endl;
+    }
+
+    if (!any) {
+        std::cout << "\n指定范围内无有效数据。" << std::endl;
     }
 
     return 0;
