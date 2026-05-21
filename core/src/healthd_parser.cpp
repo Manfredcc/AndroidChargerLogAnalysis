@@ -58,8 +58,11 @@ std::string HealthdParser::platformName() const {
 }
 
 bool HealthdParser::canParse(const std::string& line) const {
-    // 匹配 healthd(pid): 或 healthd: 两种格式
-    return line.find("healthd") != std::string::npos;
+    // 匹配 healthd(pid): 或 healthd: 两种格式，且必须包含 battery
+    auto pos = line.find("healthd");
+    if (pos == std::string::npos) return false;
+    // healthd 之后必须出现 "battery"，排除 ramoops 中的非电池行 (如 "healthd peak:...")
+    return line.find("battery", pos) != std::string::npos;
 }
 
 std::optional<ChargerDataPoint> HealthdParser::parseLine(const std::string& line) const {
@@ -101,8 +104,13 @@ std::optional<ChargerDataPoint> HealthdParser::parseLine(const std::string& line
 
     pt.battery_voltage_mv = readField("v");
     pt.battery_temperature_c = readField("t");
-    pt.battery_current_ma = readField("chg");
     pt.battery_level_pct = readField("l");
+
+    // 电池电流: c 字段, 单位 µA, 转为 mA
+    double current_ua = readField("c");
+    if (!std::isnan(current_ua)) {
+        pt.battery_current_ma = current_ua / 1000.0;
+    }
 
     // bus_voltage / bus_current: healthd 不提供, 保持 NAN
 

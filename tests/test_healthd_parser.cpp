@@ -39,7 +39,7 @@ static bool test_can_parse_healthd_line() {
 
 static bool test_parse_basic_healthd() {
     HealthdParser parser;
-    std::string line = "01-01 00:00:05.123  1234  5678 I healthd: battery l=65 v=3920 t=28.5 h=2 st=2 c=1200 chg=450";
+    std::string line = "01-01 00:00:05.123  1234  5678 I healthd: battery l=65 v=3920 t=28.5 h=2 st=2 c=450000";
 
     auto opt = parser.parseLine(line);
     ASSERT(opt.has_value(), "should parse successfully");
@@ -83,8 +83,8 @@ static bool test_parse_healthd_pid_format() {
     ASSERT(std::abs(pt.battery_level_pct - 0.0) < 0.01,  "level = 0%");
     ASSERT(std::abs(pt.battery_voltage_mv - 4151.0) < 0.01, "voltage = 4151 mV");
     ASSERT(std::abs(pt.battery_temperature_c - 30.8) < 0.01, "temp = 30.8 C");
-    // chg= 空值 → 应返回 NAN 而非 crash
-    ASSERT(std::isnan(pt.battery_current_ma), "chg=empty → NAN");
+    // c=-918900 µA → -918.9 mA
+    ASSERT(std::abs(pt.battery_current_ma - (-918.9)) < 0.01, "current = -918.9 mA (c field, µA→mA)");
 
     return true;
 }
