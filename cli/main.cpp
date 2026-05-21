@@ -71,7 +71,8 @@ static bool likely_text_file(const fs::path& path) {
 static void collect_points(
     const fs::path& file_path,
     const HealthdParser& parser,
-    std::vector<ChargerDataPoint>& out_points) {
+    std::vector<ChargerDataPoint>& out_points,
+    bool quiet = false) {
 
     // 跳过缓存文件自身
     if (file_path.filename() == ".chargerlog_cache") {
@@ -97,23 +98,28 @@ static void collect_points(
         }
     }
 
-    std::cout << "  " << file_path.filename().u8string()
-              << ": " << line_count << " 行, "
-              << parsed_count << " 个充电数据点" << std::endl;
+    if (!quiet) {
+        std::cout << "  " << file_path.filename().u8string()
+                  << ": " << line_count << " 行, "
+                  << parsed_count << " 个充电数据点" << std::endl;
+    }
 }
 
 /// 递归扫描目录
 static void scan_directory(
     const fs::path& dir_path,
     const HealthdParser& parser,
-    std::vector<ChargerDataPoint>& out_points) {
+    std::vector<ChargerDataPoint>& out_points,
+    bool quiet = false) {
 
     if (!fs::exists(dir_path) || !fs::is_directory(dir_path)) {
         std::cerr << "错误: 目录不存在或不是目录: " << dir_path.u8string() << std::endl;
         return;
     }
 
-    std::cout << "\n扫描目录: " << dir_path.u8string() << std::endl;
+    if (!quiet) {
+        std::cout << "\n扫描目录: " << dir_path.u8string() << std::endl;
+    }
 
     for (const auto& entry : fs::recursive_directory_iterator(dir_path)) {
         if (!entry.is_regular_file()) continue;
@@ -121,7 +127,7 @@ static void scan_directory(
         const auto& path = entry.path();
         if (!likely_text_file(path)) continue;
 
-        collect_points(path, parser, out_points);
+        collect_points(path, parser, out_points, quiet);
     }
 }
 
@@ -164,9 +170,33 @@ static int64_t parseTimeArg(const std::string& s) {
     return -1;
 }
 
+/// JSON 字符串转义
+static std::string jsonEscape(const std::string& s) {
+    std::string out;
+    out.reserve(s.size() + 2);
+    for (unsigned char c : s) {
+        if (c == '"')  { out += "\\\""; }
+        else if (c == '\\') { out += "\\\\"; }
+        else if (c == '\n') { out += "\\n"; }
+        else if (c == '\r') { out += "\\r"; }
+        else if (c == '\t') { out += "\\t"; }
+        else { out += static_cast<char>(c); }
+    }
+    return out;
+}
+
+/// 将 double 转为 JSON 兼容字符串 (NAN → "null")
+static std::string jsonDouble(double v) {
+    if (std::isnan(v)) return "null";
+    char buf[64];
+    std::snprintf(buf, sizeof(buf), "%.2f", v);
+    return buf;
+}
+
 /// 将毫秒数格式化为 HH:MM:SS
 static std::string msToHMS(int64_t ms) {
     if (ms < 0) return "";
+    if (ms >= 86400000LL || ms > 2147483647000LL) return "";  // 超过合理范围视为无限制
     int h = static_cast<int>(ms / 3600000);
     int m = static_cast<int>((ms % 3600000) / 60000);
     int s = static_cast<int>((ms % 60000) / 1000);
@@ -180,6 +210,7 @@ int main(int argc, char* argv[]) {
 
     // ── 参数解析 ───────────────────────────────────────────
     bool no_cache = false;
+    bool json_mode = false;
     int64_t start_ms = 0;
     int64_t end_ms = INT64_MAX;
     fs::path log_dir;
@@ -188,6 +219,8 @@ int main(int argc, char* argv[]) {
         std::string arg = argv[i];
         if (arg == "--no-cache") {
             no_cache = true;
+        } else if (arg == "--json") {
+            json_mode = true;
         } else if (arg == "--start" && i + 1 < argc) {
             i++;
             start_ms = parseTimeArg(argv[i]);
@@ -205,19 +238,20 @@ int main(int argc, char* argv[]) {
         } else if (arg[0] != '-') {
             log_dir = path_from_arg(argv[i]);
         } else {
-            std::cerr << "用法: chargerlog [--no-cache] [--start HH:MM:SS] [--end HH:MM:SS] <日志目录>" << std::endl;
+            std::cerr << "用法: chargerlog [--json] [--no-cache] [--start HH:MM:SS] [--end HH:MM:SS] <日志目录>" << std::endl;
             return 1;
         }
     }
 
     if (log_dir.empty()) {
-        std::cerr << "用法: chargerlog [--no-cache] [--start HH:MM:SS] [--end HH:MM:SS] <日志目录>" << std::endl;
+        std::cerr << "用法: chargerlog [--json] [--no-cache] [--start HH:MM:SS] [--end HH:MM:SS] <日志目录>" << std::endl;
         return 1;
     }
 
     // ── 1. 扫描目录, 解析所有日志 ──────────────────────────
     HealthdParser parser;
     std::vector<ChargerDataPoint> all_points;
+    bool from_cache = false;
 
     // 缓存查找
     uint64_t cache_fp = 0;
@@ -228,14 +262,17 @@ int main(int argc, char* argv[]) {
                 log_dir / CacheManager::DEFAULT_CACHE_FILENAME, cache_fp);
             if (cached.has_value()) {
                 all_points = std::move(cached.value());
-                std::cout << "\n从缓存加载 " << all_points.size() << " 个充电数据点" << std::endl;
+                from_cache = true;
+                if (!json_mode) {
+                    std::cout << "\n从缓存加载 " << all_points.size() << " 个充电数据点" << std::endl;
+                }
             }
         }
     }
 
     // 缓存未命中时扫描
     if (all_points.empty()) {
-        scan_directory(log_dir, parser, all_points);
+        scan_directory(log_dir, parser, all_points, json_mode);
 
         // 扫描后写入缓存
         if (!all_points.empty() && !no_cache && cache_fp != 0) {
@@ -245,12 +282,12 @@ int main(int argc, char* argv[]) {
     }
 
     if (all_points.empty()) {
-        std::cout << "\n未找到充电数据点。" << std::endl;
+        if (json_mode) {
+            std::cout << "{\"points_count\":0,\"cached\":false,\"time_range\":{\"start\":\"\",\"end\":\"\"},\"fields\":[]}\n";
+        } else {
+            std::cout << "\n未找到充电数据点。" << std::endl;
+        }
         return 0;
-    }
-
-    if (no_cache || cache_fp == 0) {
-        std::cout << "\n总计: " << all_points.size() << " 个数据点" << std::endl;
     }
 
     // ── 2. 计算统计 (全部字段, 指定时间范围) ───────────────
@@ -261,27 +298,64 @@ int main(int argc, char* argv[]) {
     auto all_stats = StatsCalculator::calcAllFields(all_points, field_names, start_ms, end_ms);
 
     // ── 3. 输出结果 ────────────────────────────────────────
-    std::cout << "\n========== 统计结果 ==========" << std::endl;
-    if (start_ms > 0 || end_ms < INT64_MAX) {
-        std::cout << "时间范围: " << msToHMS(start_ms)
-                  << " ~ " << msToHMS(end_ms) << std::endl;
-    }
+    if (json_mode) {
+        // 机器可读 JSON 输出
+        std::cout << "{\n";
+        std::cout << "  \"points_count\": " << all_points.size() << ",\n";
+        std::cout << "  \"cached\": " << (from_cache ? "true" : "false") << ",\n";
+        std::cout << "  \"time_range\": {\n";
+        std::cout << "    \"start\": \"" << msToHMS(start_ms) << "\",\n";
+        std::cout << "    \"end\": \"" << msToHMS(end_ms) << "\"\n";
+        std::cout << "  },\n";
+        std::cout << "  \"fields\": [\n";
+        bool first_field = true;
+        for (size_t i = 0; i < all_stats.size(); i++) {
+            const auto& st = all_stats[i];
+            const auto& fd = kAllFields[i];
+            if (st.count == 0) continue;
+            if (!first_field) std::cout << ",\n";
+            first_field = false;
+            std::cout << "    {\n";
+            std::cout << "      \"name\": \"" << jsonEscape(fd.name) << "\",\n";
+            std::cout << "      \"label\": \"" << jsonEscape(fd.label) << "\",\n";
+            std::cout << "      \"unit\": \"" << jsonEscape(fd.unit) << "\",\n";
+            std::cout << "      \"count\": " << st.count << ",\n";
+            std::cout << "      \"max\": " << jsonDouble(st.max) << ",\n";
+            std::cout << "      \"min\": " << jsonDouble(st.min) << ",\n";
+            std::cout << "      \"avg\": " << jsonDouble(st.avg) << ",\n";
+            std::cout << "      \"median\": " << jsonDouble(st.median) << "\n";
+            std::cout << "    }";
+        }
+        std::cout << "\n  ]\n";
+        std::cout << "}\n";
+    } else {
+        // 人类可读文本输出
+        if (no_cache || cache_fp == 0) {
+            std::cout << "\n总计: " << all_points.size() << " 个数据点" << std::endl;
+        }
 
-    bool any = false;
-    for (size_t i = 0; i < all_stats.size(); i++) {
-        const auto& st = all_stats[i];
-        const auto& fd = kAllFields[i];
-        if (st.count == 0) continue;
-        any = true;
-        std::cout << "\n" << fd.label << " (" << st.count << " 个数据点):" << std::endl;
-        std::cout << "  最高: " << st.max << " " << fd.unit << std::endl;
-        std::cout << "  最低: " << st.min << " " << fd.unit << std::endl;
-        std::cout << "  平均: " << st.avg << " " << fd.unit << std::endl;
-        std::cout << "  中位数: " << st.median << " " << fd.unit << std::endl;
-    }
+        std::cout << "\n========== 统计结果 ==========" << std::endl;
+        if (start_ms > 0 || end_ms < INT64_MAX) {
+            std::cout << "时间范围: " << msToHMS(start_ms)
+                      << " ~ " << msToHMS(end_ms) << std::endl;
+        }
 
-    if (!any) {
-        std::cout << "\n指定范围内无有效数据。" << std::endl;
+        bool any = false;
+        for (size_t i = 0; i < all_stats.size(); i++) {
+            const auto& st = all_stats[i];
+            const auto& fd = kAllFields[i];
+            if (st.count == 0) continue;
+            any = true;
+            std::cout << "\n" << fd.label << " (" << st.count << " 个数据点):" << std::endl;
+            std::cout << "  最高: " << st.max << " " << fd.unit << std::endl;
+            std::cout << "  最低: " << st.min << " " << fd.unit << std::endl;
+            std::cout << "  平均: " << st.avg << " " << fd.unit << std::endl;
+            std::cout << "  中位数: " << st.median << " " << fd.unit << std::endl;
+        }
+
+        if (!any) {
+            std::cout << "\n指定范围内无有效数据。" << std::endl;
+        }
     }
 
     return 0;

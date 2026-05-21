@@ -16,5 +16,11 @@ build/
 Thumbs.db
 .DS_Store
 
+# Server runtime
+server/history/
+
+# Cache files
+.chargerlog_cache
+
 # Personal
 .claude/
