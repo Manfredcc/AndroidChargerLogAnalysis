@@ -20,7 +20,7 @@ async function loadHistory() {
 
 async function doBrowse() {
   try {
-    const result = await selectPath('file')
+    const result = await selectPath('directory')
     if (result.path) {
       logDir.value = result.path
     }
