@@ -120,7 +120,7 @@ loadHistory()
       >
         <span>
           <b>{{ item.log_dir }}</b>
-          <br /><small>{{ item.created_at }} · {{ item.points_count }} 点</small>
+          <br /><small>{{ new Date(item.created_at).toLocaleString() }} · {{ item.points_count }} 点</small>
         </span>
         <span class="actions">
           <span class="badge" :class="item.cached ? 'badge-ok' : 'badge-miss'">
