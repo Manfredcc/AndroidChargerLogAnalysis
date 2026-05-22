@@ -146,6 +146,53 @@ function currentOption() {
   }
 }
 
+function levelOption() {
+  if (!data.value || !data.value.points.length) return {}
+  const pts = data.value.points
+  const pairs = pts.map(p => [p.t, p.lvl] as [number, number | null])
+
+  return {
+    tooltip: {
+      trigger: 'axis',
+      formatter: (params: any) => {
+        const p = params[0]
+        if (!p || p.data[1] == null) return ''
+        return `${fmtMs(p.data[0])}<br/>电量: ${p.data[1]}%`
+      },
+    },
+    grid: { left: 50, right: 20, top: 10, bottom: 30 },
+    xAxis: {
+      type: 'value',
+      scale: true,
+      axisLabel: { fontSize: 10, formatter: (ms: number) => fmtMs(ms) },
+      splitLine: { show: false },
+    },
+    yAxis: {
+      type: 'value',
+      name: '%',
+      min: 0,
+      max: 100,
+      nameTextStyle: { fontSize: 11 },
+      axisLabel: { fontSize: 10 },
+      splitLine: { lineStyle: { color: '#f0f0f0', type: 'dashed' as const } },
+    },
+    series: [{
+      type: 'line',
+      data: pairs,
+      name: '电量',
+      smooth: false,
+      symbol: 'none',
+      connectNulls: true,
+      lineStyle: { color: '#f59e0b', width: 2 },
+      itemStyle: { color: '#f59e0b' },
+      areaStyle: {
+        color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [{ offset: 0, color: '#f59e0b20' }, { offset: 1, color: '#f59e0b04' }] },
+      },
+    }],
+  }
+}
+
 function disposeCharts() {
   charts.forEach(c => c.dispose())
   charts = []
@@ -163,6 +210,11 @@ function initCharts() {
     const c2 = echarts.init(refs[1])
     c2.setOption(currentOption())
     charts.push(c2)
+  }
+  if (refs[2]) {
+    const c3 = echarts.init(refs[2])
+    c3.setOption(levelOption())
+    charts.push(c3)
   }
 }
 
@@ -224,6 +276,10 @@ onUnmounted(() => {
         <div class="chart-card">
           <h3>电池电流 <span class="unit">(mA)</span></h3>
           <div :ref="el => { if (el) chartRefs[1] = el as HTMLElement }" style="height:240px" />
+        </div>
+        <div class="chart-card">
+          <h3>电量 <span class="unit">(%)</span></h3>
+          <div :ref="el => { if (el) chartRefs[2] = el as HTMLElement }" style="height:240px" />
         </div>
       </div>
       <div class="empty" v-else-if="!error">
