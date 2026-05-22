@@ -14,35 +14,24 @@ const showBrowseMenu = ref(false)
 const browseWrapper = ref<HTMLElement | null>(null)
 const isDragging = ref(false)
 
-function decodeSafe(s: string): string {
-  try { return decodeURI(s) } catch { return s }
-}
-
-function extractPath(dt: DataTransfer): string | null {
-  const tryText = (raw: string): string | null => {
-    for (const line of raw.split(/[\r\n]+/)) {
-      const t = line.trim().replace(/^["']|["']$/g, '')
-      if (!t) continue
-      // file:// URI: 处理反斜杠、多余斜杠、大小写
-      let m = t.match(/^[Ff][Ii][Ll][Ee]:\/{1,10}(.+)$/)
-      if (m) return decodeSafe(m[1]).replace(/\//g, '\\')
-      // Windows 绝对路径 D:\...
-      if (/^[A-Za-z]:[\\/]/.test(t)) return t
-      // UNC 路径 \\server\share
-      if (/^[\\/]{2}[^\\/]/.test(t)) return t
-    }
-    return null
+function extractPath(dataTransfer: DataTransfer): string | null {
+  // text/plain: Windows 拖拽文件的完整路径
+  const text = dataTransfer.getData('text/plain')
+  if (text) {
+    const trimmed = text.trim().replace(/^["']|["']$/g, '')
+    if (/^[A-Za-z]:[\\/]/.test(trimmed) || /^[\\/]/.test(trimmed)) return trimmed
   }
-  // 按优先级尝试各 MIME 类型
-  let result = tryText(dt.getData('text/uri-list'))
-  if (result) return result
-  result = tryText(dt.getData('text/plain'))
-  if (result) return result
-  // 遍历所有可用类型兜底
-  for (const type of dt.types) {
-    if (type === 'Files') continue
-    result = tryText(dt.getData(type))
-    if (result) return result
+  // text/uri-list: file:// URI 格式
+  const uri = dataTransfer.getData('text/uri-list')
+  if (uri) {
+    const match = uri.match(/file:\/\/\/(.+)/i)
+    if (match) return decodeURI(match[1].trim())
+  }
+  // HTML 拖拽可能把路径放在 text/html 里
+  const html = dataTransfer.getData('text/html')
+  if (html) {
+    const m = html.match(/href="file:\/\/\/(.+?)"/i) || html.match(/src="file:\/\/\/(.+?)"/i)
+    if (m) return decodeURI(m[1].trim())
   }
   return null
 }
@@ -67,9 +56,6 @@ function onDrop(e: DragEvent) {
   if (path) {
     logDir.value = path
     error.value = ''
-  } else if (e.dataTransfer.files.length > 0) {
-    // 浏览器隐藏了路径，提示用户用浏览按钮
-    error.value = '拖拽未获取到完整路径，请使用"浏览"按钮选择'
   }
 }
 
@@ -169,8 +155,7 @@ loadHistory()
       <label>日志路径</label>
       <div class="path-row">
         <input v-model="logDir" placeholder="日志目录路径或压缩包路径 (支持 .zip, .tar.gz 等)"
-               @keyup.enter="doUpload"
-               @dragover.prevent @drop.prevent="onDrop" />
+               @keyup.enter="doUpload" />
         <div class="browse-wrapper" ref="browseWrapper">
           <button class="btn-browse" @click="showBrowseMenu = !showBrowseMenu" :disabled="loading">
             浏览 ▾
