@@ -740,21 +740,28 @@ h2 { font-size: 18px; color: #1a1a1a; word-break: break-all; }
   display: flex; align-items: center; gap: 10px;
 }
 .time-input {
-  width: 72px; padding: 4px 6px; border: 1px solid #ddd; border-radius: 4px;
+  width: 130px; padding: 4px 6px; border: 1px solid #ddd; border-radius: 4px;
   font-size: 12px; font-family: monospace; text-align: center; color: #333;
 }
 .time-input:focus { outline: none; border-color: #2563eb; }
 
 .range-slider {
-  position: relative; flex: 1; height: 28px; display: flex; align-items: center;
+  position: relative; flex: 1; height: 28px;
 }
 .range-slider input[type="range"] {
-  position: absolute; width: 100%; margin: 0; padding: 0;
+  position: absolute; top: 0; left: 0; width: 100%; height: 28px;
+  margin: 0; padding: 0;
   -webkit-appearance: none; appearance: none; background: transparent;
-  pointer-events: none; z-index: 1;
+  pointer-events: none;
 }
-.range-slider input[type="range"]::-webkit-slider-runnable-track {
+.range-thumb-min { z-index: 1; }
+.range-thumb-max { z-index: 2; }
+/* 只有底层 (min) 显示灰色轨道，上层 (max) 轨道透明 */
+.range-thumb-min::-webkit-slider-runnable-track {
   height: 4px; background: #e0e0e0; border-radius: 2px;
+}
+.range-thumb-max::-webkit-slider-runnable-track {
+  height: 4px; background: transparent;
 }
 .range-slider input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none; appearance: none;
@@ -763,8 +770,11 @@ h2 { font-size: 18px; color: #1a1a1a; word-break: break-all; }
   box-shadow: 0 1px 3px rgba(0,0,0,.2);
   cursor: pointer; pointer-events: auto; margin-top: -6px;
 }
-.range-slider input[type="range"]::-moz-range-track {
+.range-thumb-min::-moz-range-track {
   height: 4px; background: #e0e0e0; border-radius: 2px;
+}
+.range-thumb-max::-moz-range-track {
+  height: 4px; background: transparent;
 }
 .range-slider input[type="range"]::-moz-range-thumb {
   width: 16px; height: 16px; border-radius: 50%;
