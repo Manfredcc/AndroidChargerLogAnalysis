@@ -15,8 +15,13 @@ const browseWrapper = ref<HTMLElement | null>(null)
 
 async function loadHistory() {
   try {
-    const data = await getHistory(1, 10)
-    history.value = data.items
+    const data = await getHistory(1, 50)
+    const seen = new Set<string>()
+    history.value = data.items.filter(item => {
+      if (seen.has(item.log_dir)) return false
+      seen.add(item.log_dir)
+      return true
+    }).slice(0, 10)
   } catch { /* ignore */ }
 }
 

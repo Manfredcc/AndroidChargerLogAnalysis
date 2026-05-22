@@ -163,7 +163,7 @@ def upload():
 
     record = {
         "id": analysis_id,
-        "log_dir": original_path,
+        "log_dir": actual_log_dir,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "start": None,
         "end": None,
