@@ -14,6 +14,7 @@ const route = useRoute()
 const router = useRouter()
 
 const data = ref<AnalysisResult | null>(null)
+const loading = ref(false)
 const error = ref('')
 const ratedCycles = ref(300)
 const showVoltage = ref(true)
@@ -489,6 +490,7 @@ function onResize() {
 }
 
 onMounted(async () => {
+  loading.value = true
   try {
     data.value = await getAnalysis(route.params.analysisId as string)
     if (data.value && validPoints.value.length > 0) {
@@ -502,6 +504,8 @@ onMounted(async () => {
     window.addEventListener('resize', onResize)
   } catch (e: any) {
     error.value = e.message || String(e)
+  } finally {
+    loading.value = false
   }
 })
 
@@ -515,6 +519,8 @@ onUnmounted(() => {
 <template>
   <div class="dashboard">
     <div v-if="error" class="error">{{ error }}</div>
+
+    <div v-if="loading" class="loading-banner">正在检查日志缓存...</div>
 
     <template v-if="data">
       <div class="header">
@@ -681,6 +687,7 @@ onUnmounted(() => {
 <style scoped>
 .dashboard { max-width: 960px; margin: 0 auto; }
 .error { color: #d32f2f; background: #ffeaea; padding: 16px; border-radius: 8px; }
+.loading-banner { text-align: center; padding: 40px 20px; color: #888; font-size: 15px; }
 .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
 h2 { font-size: 18px; color: #1a1a1a; word-break: break-all; }
 .meta { color: #888; font-size: 13px; margin-top: 4px; }
