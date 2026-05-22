@@ -4,10 +4,10 @@ import { useRoute, useRouter } from 'vue-router'
 import * as echarts from 'echarts/core'
 import { LineChart } from 'echarts/charts'
 import { CanvasRenderer } from 'echarts/renderers'
-import { TitleComponent, TooltipComponent, GridComponent } from 'echarts/components'
+import { TitleComponent, TooltipComponent, GridComponent, LegendComponent } from 'echarts/components'
 import { getAnalysis, type AnalysisResult } from '../api'
 
-echarts.use([LineChart, CanvasRenderer, TitleComponent, TooltipComponent, GridComponent])
+echarts.use([LineChart, CanvasRenderer, TitleComponent, TooltipComponent, GridComponent, LegendComponent])
 
 const route = useRoute()
 const router = useRouter()
@@ -24,34 +24,107 @@ function fmtMs(ms: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
-function lineOption(field: 'v' | 'tmp' | 'cur', unit: string, color: string) {
+function combinedOption() {
   if (!data.value || !data.value.points.length) return {}
   const pts = data.value.points
-  const pairs = pts.map(p => [p.t, p[field]] as [number, number | null])
+  const vPairs = pts.map(p => [p.t, p.v] as [number, number | null])
+  const tPairs = pts.map(p => [p.t, p.tmp] as [number, number | null])
+
+  return {
+    legend: { data: ['电压', '温度'], bottom: 0 },
+    tooltip: {
+      trigger: 'axis',
+      formatter: (params: any) => {
+        const time = fmtMs(params[0]?.data[0] || 0)
+        let s = time
+        params.forEach((p: any) => {
+          if (p && p.data[1] != null) s += `<br/>${p.seriesName}: ${p.data[1]} ${p.seriesName === '电压' ? 'mV' : '°C'}`
+        })
+        return s
+      },
+    },
+    grid: { left: 60, right: 60, top: 10, bottom: 40 },
+    xAxis: {
+      type: 'value',
+      scale: true,
+      axisLabel: { fontSize: 10, formatter: (ms: number) => fmtMs(ms) },
+      splitLine: { show: false },
+    },
+    yAxis: [
+      {
+        type: 'value',
+        name: 'mV',
+        nameTextStyle: { fontSize: 11 },
+        axisLabel: { fontSize: 10 },
+        splitLine: { lineStyle: { color: '#f0f0f0', type: 'dashed' as const } },
+      },
+      {
+        type: 'value',
+        name: '°C',
+        nameTextStyle: { fontSize: 11 },
+        axisLabel: { fontSize: 10 },
+        splitLine: { show: false },
+      },
+    ],
+    series: [
+      {
+        type: 'line',
+        name: '电压',
+        data: vPairs,
+        yAxisIndex: 0,
+        smooth: false,
+        symbol: 'none',
+        connectNulls: true,
+        lineStyle: { color: '#2563eb', width: 2 },
+        itemStyle: { color: '#2563eb' },
+        areaStyle: {
+          color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+            colorStops: [{ offset: 0, color: '#2563eb20' }, { offset: 1, color: '#2563eb04' }] },
+        },
+      },
+      {
+        type: 'line',
+        name: '温度',
+        data: tPairs,
+        yAxisIndex: 1,
+        smooth: false,
+        symbol: 'none',
+        connectNulls: true,
+        lineStyle: { color: '#ef4444', width: 2 },
+        itemStyle: { color: '#ef4444' },
+        areaStyle: {
+          color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+            colorStops: [{ offset: 0, color: '#ef444420' }, { offset: 1, color: '#ef444404' }] },
+        },
+      },
+    ],
+  }
+}
+
+function currentOption() {
+  if (!data.value || !data.value.points.length) return {}
+  const pts = data.value.points
+  const pairs = pts.map(p => [p.t, p.cur] as [number, number | null])
 
   return {
     tooltip: {
       trigger: 'axis',
       formatter: (params: any) => {
         const p = params[0]
-        if (!p) return ''
-        const time = fmtMs(p.data[0])
-        return `${time}<br/>${p.seriesName}: ${p.data[1]} ${unit}`
+        if (!p || p.data[1] == null) return ''
+        return `${fmtMs(p.data[0])}<br/>电流: ${p.data[1]} mA`
       },
     },
     grid: { left: 60, right: 20, top: 10, bottom: 30 },
     xAxis: {
       type: 'value',
       scale: true,
-      axisLabel: {
-        fontSize: 10,
-        formatter: (ms: number) => fmtMs(ms),
-      },
+      axisLabel: { fontSize: 10, formatter: (ms: number) => fmtMs(ms) },
       splitLine: { show: false },
     },
     yAxis: {
       type: 'value',
-      name: unit,
+      name: 'mA',
       nameTextStyle: { fontSize: 11 },
       axisLabel: { fontSize: 10 },
       splitLine: { lineStyle: { color: '#f0f0f0', type: 'dashed' as const } },
@@ -59,30 +132,19 @@ function lineOption(field: 'v' | 'tmp' | 'cur', unit: string, color: string) {
     series: [{
       type: 'line',
       data: pairs,
-      name: '',
+      name: '电流',
       smooth: false,
       symbol: 'none',
       connectNulls: true,
-      lineStyle: { color, width: 2 },
+      lineStyle: { color: '#22c55e', width: 2 },
+      itemStyle: { color: '#22c55e' },
       areaStyle: {
-        color: {
-          type: 'linear',
-          x: 0, y: 0, x2: 0, y2: 1,
-          colorStops: [
-            { offset: 0, color: color + '20' },
-            { offset: 1, color: color + '04' },
-          ],
-        },
+        color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [{ offset: 0, color: '#22c55e20' }, { offset: 1, color: '#22c55e04' }] },
       },
     }],
   }
 }
-
-const fieldConfigs: { field: 'v' | 'tmp' | 'cur'; label: string; unit: string; color: string }[] = [
-  { field: 'v', label: '电池电压', unit: 'mV', color: '#2563eb' },
-  { field: 'tmp', label: '电池温度', unit: '°C', color: '#ef4444' },
-  { field: 'cur', label: '电池电流', unit: 'mA', color: '#22c55e' },
-]
 
 function disposeCharts() {
   charts.forEach(c => c.dispose())
@@ -91,13 +153,17 @@ function disposeCharts() {
 
 function initCharts() {
   disposeCharts()
-  chartRefs.value.forEach((el, i) => {
-    if (!el) return
-    const cfg = fieldConfigs[i]
-    const chart = echarts.init(el)
-    chart.setOption(lineOption(cfg.field, cfg.unit, cfg.color))
-    charts.push(chart)
-  })
+  const refs = chartRefs.value
+  if (refs[0]) {
+    const c1 = echarts.init(refs[0])
+    c1.setOption(combinedOption())
+    charts.push(c1)
+  }
+  if (refs[1]) {
+    const c2 = echarts.init(refs[1])
+    c2.setOption(currentOption())
+    charts.push(c2)
+  }
 }
 
 let resizeTimer: ReturnType<typeof setTimeout> | null = null
@@ -151,9 +217,13 @@ onUnmounted(() => {
       </div>
 
       <div class="charts" v-if="data.points.length">
-        <div class="chart-card" v-for="(cfg, idx) in fieldConfigs" :key="cfg.field">
-          <h3>{{ cfg.label }} <span class="unit">({{ cfg.unit }})</span></h3>
-          <div :ref="el => { if (el) chartRefs[idx] = el as HTMLElement }" style="height:240px" />
+        <div class="chart-card">
+          <h3>电池电压 · 温度</h3>
+          <div :ref="el => { if (el) chartRefs[0] = el as HTMLElement }" style="height:300px" />
+        </div>
+        <div class="chart-card">
+          <h3>电池电流 <span class="unit">(mA)</span></h3>
+          <div :ref="el => { if (el) chartRefs[1] = el as HTMLElement }" style="height:240px" />
         </div>
       </div>
       <div class="empty" v-else-if="!error">
