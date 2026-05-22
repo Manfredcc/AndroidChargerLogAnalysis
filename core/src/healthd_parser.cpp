@@ -23,18 +23,26 @@ std::unordered_map<std::string, std::string> parseKeyValuePairs(const std::strin
     return kv;
 }
 
-/// 解析时间戳 "01-01 00:00:05.123" → 当天毫秒数
+/// 解析时间戳 "04-06 09:33:59.273" → 年内毫秒数 (自 Jan 1 00:00:00.000 起)
 /// Android 日志通常是 MM-DD HH:MM:SS.mmm 格式
 int64_t parseTimestampToMs(const std::string& ts_str) {
-    // 只取 HH:MM:SS 部分, 忽略日期
-    std::regex time_re(R"((\d{2}):(\d{2}):(\d{2})\.(\d{3}))");
+    std::regex re(R"((\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})\.(\d{3}))");
     std::smatch m;
-    if (std::regex_search(ts_str, m, time_re)) {
-        int hh = std::stoi(m[1]);
-        int mm = std::stoi(m[2]);
-        int ss = std::stoi(m[3]);
-        int ms = std::stoi(m[4]);
-        return static_cast<int64_t>(hh) * 3600000
+    if (std::regex_search(ts_str, m, re)) {
+        int month = std::stoi(m[1]);
+        int day   = std::stoi(m[2]);
+        int hh    = std::stoi(m[3]);
+        int mm    = std::stoi(m[4]);
+        int ss    = std::stoi(m[5]);
+        int ms    = std::stoi(m[6]);
+
+        static const int days_before[] = {
+            0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365
+        };
+        int day_of_year = days_before[month - 1] + (day - 1);
+
+        return static_cast<int64_t>(day_of_year) * 86400000LL
+             + static_cast<int64_t>(hh) * 3600000
              + static_cast<int64_t>(mm) * 60000
              + static_cast<int64_t>(ss) * 1000
              + ms;
@@ -75,10 +83,11 @@ std::optional<ChargerDataPoint> HealthdParser::parseLine(const std::string& line
     // ── 提取原始时间戳 ─────────────────────────────────
     std::regex ts_re(R"(^(\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{3}))");
     std::smatch ts_match;
-    if (std::regex_search(line, ts_match, ts_re)) {
-        pt.timestamp_str = ts_match[1];
-        pt.elapsed_ms = parseTimestampToMs(pt.timestamp_str);
+    if (!std::regex_search(line, ts_match, ts_re)) {
+        return std::nullopt;  // 无有效时间戳，跳过此数据点
     }
+    pt.timestamp_str = ts_match[1];
+    pt.elapsed_ms = parseTimestampToMs(pt.timestamp_str);
 
     // ── 提取 healthd 后第一个冒号后面的 k=v ────────────
     // 兼容: "healthd: battery ..." 和 "healthd(    0): battery ..."

@@ -10,7 +10,7 @@ namespace chargerlog {
 
 /// 单个时间戳对应的充电数据点
 struct ChargerDataPoint {
-    int64_t elapsed_ms = 0;            ///< 相对会话开始时间的毫秒数
+    int64_t elapsed_ms = 0;            ///< 年内毫秒数: 自 Jan 1 00:00:00.000 起
     std::string timestamp_str;         ///< 原始时间戳字符串 (for display)
 
     // ── 常见充电数据字段 ──────────────────────────────

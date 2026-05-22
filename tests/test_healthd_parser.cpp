@@ -92,7 +92,7 @@ static bool test_parse_healthd_pid_format() {
 static bool test_parse_partial_data() {
     HealthdParser parser;
     // 只包含部分字段
-    std::string line = "healthd: battery v=4000 t=30.0";
+    std::string line = "01-01 00:00:05.000 healthd: battery v=4000 t=30.0";
     auto opt = parser.parseLine(line);
     ASSERT(opt.has_value(), "partial data should parse");
 

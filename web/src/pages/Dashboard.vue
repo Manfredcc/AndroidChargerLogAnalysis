@@ -26,15 +26,27 @@ const timeRangeMax = ref(0)
 const timeRangeMinInput = ref('')
 const timeRangeMaxInput = ref('')
 
-function parseHHMMSS(s: string): number {
-  const match = s.match(/^(\d{1,2}):(\d{2}):(\d{2})$/)
+// 每月 1 日前的累计天数 (非闰年)
+const DAYS_BEFORE = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365]
+const MS_PER_DAY = 86400000
+
+/** 将 MM-DD HH:MM:SS 解析为年内毫秒数 */
+function parseAbsTime(s: string): number {
+  const match = s.match(/^(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})$/)
   if (!match) return -1
-  return Number(match[1]) * 3600000 + Number(match[2]) * 60000 + Number(match[3]) * 1000
+  const month = Number(match[1])
+  const day = Number(match[2])
+  if (month < 1 || month > 12) return -1
+  const maxDay = DAYS_BEFORE[month] - DAYS_BEFORE[month - 1]
+  if (day < 1 || day > maxDay) return -1
+  const doy = DAYS_BEFORE[month - 1] + (day - 1)
+  const tod = Number(match[3]) * 3600000 + Number(match[4]) * 60000 + Number(match[5]) * 1000
+  return doy * MS_PER_DAY + tod
 }
 
 const validPoints = computed(() => {
   if (!data.value) return []
-  return data.value.points.filter(p => p.t >= 0 && p.t <= 86400000 * 7)
+  return data.value.points.filter(p => p.t >= 0 && p.t <= MS_PER_DAY * 366)
 })
 
 const dataMinT = computed(() =>
@@ -78,7 +90,7 @@ function onSliderMaxInput() {
 }
 
 function onMinInputChange() {
-  const ms = parseHHMMSS(timeRangeMinInput.value)
+  const ms = parseAbsTime(timeRangeMinInput.value)
   if (ms >= 0 && ms < timeRangeMax.value && ms >= dataMinT.value) {
     timeRangeMin.value = ms
   } else {
@@ -87,7 +99,7 @@ function onMinInputChange() {
 }
 
 function onMaxInputChange() {
-  const ms = parseHHMMSS(timeRangeMaxInput.value)
+  const ms = parseAbsTime(timeRangeMaxInput.value)
   if (ms > timeRangeMin.value && ms <= dataMaxT.value) {
     timeRangeMax.value = ms
   } else {
@@ -207,10 +219,17 @@ function onDragEnd(e: DragEvent) {
 }
 
 function fmtMs(ms: number): string {
-  const h = Math.floor(ms / 3600000)
-  const m = Math.floor((ms % 3600000) / 60000)
-  const s = Math.floor((ms % 60000) / 1000)
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+  const doy = Math.floor(ms / MS_PER_DAY)
+  const tod = ms % MS_PER_DAY
+  let month = 12
+  for (let m = 1; m <= 12; m++) {
+    if (doy < DAYS_BEFORE[m]) { month = m; break }
+  }
+  const day = doy - DAYS_BEFORE[month - 1] + 1
+  const h = Math.floor(tod / 3600000)
+  const m = Math.floor((tod % 3600000) / 60000)
+  const s = Math.floor((tod % 60000) / 1000)
+  return `${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')} ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
 function combinedOption() {
@@ -555,7 +574,7 @@ onUnmounted(() => {
           <input
             class="time-input time-input-left"
             :value="timeRangeMinInput"
-            placeholder="HH:MM:SS"
+            placeholder="MM-DD HH:MM:SS"
             @change="onMinInputChange"
             @input="timeRangeMinInput = ($event.target as HTMLInputElement).value"
           />
@@ -582,7 +601,7 @@ onUnmounted(() => {
           <input
             class="time-input time-input-right"
             :value="timeRangeMaxInput"
-            placeholder="HH:MM:SS"
+            placeholder="MM-DD HH:MM:SS"
             @change="onMaxInputChange"
             @input="timeRangeMaxInput = ($event.target as HTMLInputElement).value"
           />

@@ -193,15 +193,30 @@ static std::string jsonDouble(double v) {
     return buf;
 }
 
-/// 将毫秒数格式化为 HH:MM:SS
+/// 将年内毫秒数格式化为 MM-DD HH:MM:SS
 static std::string msToHMS(int64_t ms) {
     if (ms < 0) return "";
-    if (ms >= 86400000LL || ms > 2147483647000LL) return "";  // 超过合理范围视为无限制
-    int h = static_cast<int>(ms / 3600000);
-    int m = static_cast<int>((ms % 3600000) / 60000);
-    int s = static_cast<int>((ms % 60000) / 1000);
-    char buf[16];
-    std::snprintf(buf, sizeof(buf), "%02d:%02d:%02d", h, m, s);
+    if (ms > 2147483647000LL) return "";  // 无限制标记
+
+    static const int days_before[] = {
+        0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365
+    };
+    static const int64_t ms_per_day = 86400000LL;
+
+    int doy = static_cast<int>(ms / ms_per_day);
+    int64_t tod = ms % ms_per_day;
+
+    int month = 12;
+    for (int m = 1; m <= 12; m++) {
+        if (doy < days_before[m]) { month = m; break; }
+    }
+    int day = doy - days_before[month - 1] + 1;
+
+    int h = static_cast<int>(tod / 3600000);
+    int m = static_cast<int>((tod % 3600000) / 60000);
+    int s = static_cast<int>((tod % 60000) / 1000);
+    char buf[24];
+    std::snprintf(buf, sizeof(buf), "%02d-%02d %02d:%02d:%02d", month, day, h, m, s);
     return buf;
 }
 
