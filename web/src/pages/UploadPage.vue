@@ -12,62 +12,6 @@ const error = ref('')
 const history = ref<HistoryItem[]>([])
 const showBrowseMenu = ref(false)
 const browseWrapper = ref<HTMLElement | null>(null)
-const isDragging = ref(false)
-
-function extractPath(dataTransfer: DataTransfer): string | null {
-  // text/plain: Windows 拖拽文件的完整路径
-  const text = dataTransfer.getData('text/plain')
-  if (text) {
-    const trimmed = text.trim().replace(/^["']|["']$/g, '')
-    if (/^[A-Za-z]:[\\/]/.test(trimmed) || /^[\\/]/.test(trimmed)) return trimmed
-  }
-  // text/uri-list: file:// URI 格式
-  const uri = dataTransfer.getData('text/uri-list')
-  if (uri) {
-    const match = uri.match(/file:\/\/\/(.+)/i)
-    if (match) return decodeURI(match[1].trim())
-  }
-  // HTML 拖拽可能把路径放在 text/html 里
-  const html = dataTransfer.getData('text/html')
-  if (html) {
-    const m = html.match(/href="file:\/\/\/(.+?)"/i) || html.match(/src="file:\/\/\/(.+?)"/i)
-    if (m) return decodeURI(m[1].trim())
-  }
-  return null
-}
-
-function onDragOver(e: DragEvent) {
-  e.preventDefault()
-  if (e.dataTransfer) {
-    e.dataTransfer.dropEffect = 'link'
-    isDragging.value = true
-  }
-}
-
-function onDragLeave() {
-  isDragging.value = false
-}
-
-function onDrop(e: DragEvent) {
-  e.preventDefault()
-  isDragging.value = false
-  if (!e.dataTransfer || loading.value) return
-  const path = extractPath(e.dataTransfer)
-  if (path) {
-    logDir.value = path
-    error.value = ''
-  }
-}
-
-function onPaste(e: ClipboardEvent) {
-  if (!e.clipboardData || loading.value) return
-  const path = extractPath(e.clipboardData as DataTransfer)
-  if (path) {
-    e.preventDefault()
-    logDir.value = path
-    error.value = ''
-  }
-}
 
 async function loadHistory() {
   try {
@@ -148,9 +92,8 @@ loadHistory()
 </script>
 
 <template>
-  <div class="upload-page" @paste="onPaste">
-    <div class="card" :class="{ 'drag-over': isDragging }"
-         @dragover="onDragOver" @dragleave="onDragLeave" @drop="onDrop">
+  <div class="upload-page">
+    <div class="card">
       <h2>新建分析</h2>
       <label>日志路径</label>
       <div class="path-row">
@@ -202,8 +145,7 @@ loadHistory()
 
 <style scoped>
 .upload-page { max-width: 640px; margin: 0 auto; }
-.card { background: #fff; border-radius: 8px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.08); transition: border-color .15s, box-shadow .15s; border: 2px solid transparent; }
-.card.drag-over { border-color: #2563eb; box-shadow: 0 0 0 4px rgba(37,99,235,.12); }
+.card { background: #fff; border-radius: 8px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
 h2 { font-size: 16px; margin-bottom: 16px; color: #333; }
 label { display: block; font-size: 13px; color: #666; margin-bottom: 4px; margin-top: 10px; }
 input[type="text"] { width: 100%; padding: 8px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
