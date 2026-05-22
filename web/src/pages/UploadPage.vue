@@ -76,6 +76,18 @@ async function doDelete(id: string) {
   loadHistory()
 }
 
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return '刚刚'
+  if (mins < 60) return `${mins}分钟前`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}小时前`
+  const days = Math.floor(hrs / 24)
+  if (days < 30) return `${days}天前`
+  return new Date(iso).toLocaleDateString()
+}
+
 loadHistory()
 </script>
 
@@ -123,9 +135,7 @@ loadHistory()
           <br /><small>{{ new Date(item.created_at).toLocaleString() }} · {{ item.points_count }} 点</small>
         </span>
         <span class="actions">
-          <span class="badge" :class="item.cached ? 'badge-ok' : 'badge-miss'">
-            {{ item.cached ? '缓存' : '扫描' }}
-          </span>
+          <span class="badge badge-time">{{ timeAgo(item.created_at) }}</span>
           <span class="del" @click.stop="doDelete(item.id)">x</span>
         </span>
       </div>
@@ -172,8 +182,7 @@ input[type="text"] { width: 100%; padding: 8px 10px; border: 1px solid #ddd; bor
 .history-item:hover { background: #f8faff; margin: 0 -12px; padding-left: 12px; padding-right: 12px; border-radius: 4px; }
 .history-item small { color: #999; }
 .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
-.badge-ok { background: #e6f4ea; color: #137333; }
-.badge-miss { background: #fef3c7; color: #92400e; }
+.badge-time { background: #f0f0f0; color: #888; }
 .del { color: #ccc; padding: 4px 8px; }
 .del:hover { color: #d32f2f; }
 </style>

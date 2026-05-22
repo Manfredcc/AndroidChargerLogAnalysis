@@ -523,7 +523,6 @@ onUnmounted(() => {
           <p class="meta">
             {{ data.points_count }} 个数据点 ·
             数据时间 {{ fmtMs(dataMinT) }} ~ {{ fmtMs(dataMaxT) }} ·
-            {{ data.cached ? '从缓存加载' : '重新扫描' }} ·
             {{ new Date(data.created_at).toLocaleString() }}
           </p>
         </div>

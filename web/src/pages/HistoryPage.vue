@@ -37,7 +37,6 @@ onMounted(load)
             <th>目录</th>
             <th>时间</th>
             <th>数据点</th>
-            <th>来源</th>
             <th></th>
           </tr>
         </thead>
@@ -46,11 +45,6 @@ onMounted(load)
             <td class="dir">{{ item.log_dir }}</td>
             <td>{{ new Date(item.created_at).toLocaleString() }}</td>
             <td>{{ item.points_count }}</td>
-            <td>
-              <span class="badge" :class="item.cached ? 'badge-ok' : 'badge-miss'">
-                {{ item.cached ? '缓存' : '扫描' }}
-              </span>
-            </td>
             <td @click.stop>
               <button class="del" @click="doDelete(item.id)">删除</button>
             </td>
@@ -73,9 +67,6 @@ td { border-bottom: 1px solid #f0f0f0; }
 tr { cursor: pointer; }
 tr:hover td { background: #f8faff; }
 .dir { max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
-.badge-ok { background: #e6f4ea; color: #137333; }
-.badge-miss { background: #fef3c7; color: #92400e; }
 .del { padding: 2px 10px; border: 1px solid #ddd; border-radius: 4px; background: #fff; color: #999; cursor: pointer; font-size: 12px; }
 .del:hover { border-color: #d32f2f; color: #d32f2f; }
 .empty { text-align: center; color: #999; padding: 60px 0; }
