@@ -15,6 +15,8 @@ const router = useRouter()
 const data = ref<AnalysisResult | null>(null)
 const error = ref('')
 const ratedCycles = ref(300)
+const showVoltage = ref(true)
+const showTemp = ref(true)
 
 interface ChartDef {
   id: string
@@ -31,6 +33,7 @@ const chartOrder = ref<ChartDef[]>([
 
 const chartRefs = ref<Map<string, HTMLElement>>(new Map())
 let charts: echarts.ECharts[] = []
+let combinedChart: echarts.ECharts | null = null
 let cycleChart: echarts.ECharts | null = null
 
 // ── 拖拽排序 ──────────────────────────────
@@ -71,6 +74,42 @@ function combinedOption() {
   const vPairs = pts.map(p => [p.t, p.v] as [number, number | null])
   const tPairs = pts.map(p => [p.t, p.tmp] as [number, number | null])
 
+  const series: any[] = []
+  if (showVoltage.value) {
+    series.push({
+      type: 'line',
+      name: '电压',
+      data: vPairs,
+      yAxisIndex: 0,
+      smooth: false,
+      symbol: 'none',
+      connectNulls: true,
+      lineStyle: { color: '#2563eb', width: 2 },
+      itemStyle: { color: '#2563eb' },
+      areaStyle: {
+        color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [{ offset: 0, color: '#2563eb20' }, { offset: 1, color: '#2563eb04' }] },
+      },
+    })
+  }
+  if (showTemp.value) {
+    series.push({
+      type: 'line',
+      name: '温度',
+      data: tPairs,
+      yAxisIndex: showVoltage.value ? 1 : 0,
+      smooth: false,
+      symbol: 'none',
+      connectNulls: true,
+      lineStyle: { color: '#ef4444', width: 2 },
+      itemStyle: { color: '#ef4444' },
+      areaStyle: {
+        color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [{ offset: 0, color: '#ef444420' }, { offset: 1, color: '#ef444404' }] },
+      },
+    })
+  }
+
   return {
     legend: { data: ['电压', '温度'], bottom: 0 },
     tooltip: {
@@ -94,7 +133,7 @@ function combinedOption() {
     yAxis: [
       {
         type: 'value',
-        name: 'mV',
+        name: showVoltage.value || !showTemp.value ? 'mV' : '°C',
         nameTextStyle: { fontSize: 11 },
         axisLabel: { fontSize: 10 },
         splitLine: { lineStyle: { color: '#f0f0f0', type: 'dashed' as const } },
@@ -107,38 +146,7 @@ function combinedOption() {
         splitLine: { show: false },
       },
     ],
-    series: [
-      {
-        type: 'line',
-        name: '电压',
-        data: vPairs,
-        yAxisIndex: 0,
-        smooth: false,
-        symbol: 'none',
-        connectNulls: true,
-        lineStyle: { color: '#2563eb', width: 2 },
-        itemStyle: { color: '#2563eb' },
-        areaStyle: {
-          color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-            colorStops: [{ offset: 0, color: '#2563eb20' }, { offset: 1, color: '#2563eb04' }] },
-        },
-      },
-      {
-        type: 'line',
-        name: '温度',
-        data: tPairs,
-        yAxisIndex: 1,
-        smooth: false,
-        symbol: 'none',
-        connectNulls: true,
-        lineStyle: { color: '#ef4444', width: 2 },
-        itemStyle: { color: '#ef4444' },
-        areaStyle: {
-          color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-            colorStops: [{ offset: 0, color: '#ef444420' }, { offset: 1, color: '#ef444404' }] },
-        },
-      },
-    ],
+    series,
   }
 }
 
@@ -290,6 +298,7 @@ function cycleOption() {
 function disposeCharts() {
   charts.forEach(c => c.dispose())
   charts = []
+  combinedChart = null
   cycleChart = null
 }
 
@@ -308,12 +317,17 @@ function initCharts() {
     const chart = echarts.init(el)
     chart.setOption(optionFns[def.id]())
     charts.push(chart)
+    if (def.id === 'combined') combinedChart = chart
     if (def.id === 'cycle') cycleChart = chart
   })
 }
 
 watch(ratedCycles, () => {
   if (cycleChart) cycleChart.setOption(cycleOption())
+})
+
+watch([showVoltage, showTemp], () => {
+  if (combinedChart) combinedChart.setOption(combinedOption(), { notMerge: true })
 })
 
 watch(chartOrder, async () => {
@@ -384,7 +398,13 @@ onUnmounted(() => {
         >
           <!-- combined: 双 Y 轴图 -->
           <template v-if="def.type === 'combined'">
-            <h3>{{ def.title }}</h3>
+            <div class="chart-card-header">
+              <h3>{{ def.title }}</h3>
+              <div class="toggle-group">
+                <label class="toggle-label"><input type="checkbox" v-model="showVoltage" /><span>电压</span></label>
+                <label class="toggle-label"><input type="checkbox" v-model="showTemp" /><span>温度</span></label>
+              </div>
+            </div>
             <div :ref="el => { if (el) chartRefs.set('combined', el as HTMLElement) }" :style="{ height: def.height + 'px' }" />
           </template>
           <!-- current: 电流图 -->
@@ -436,6 +456,9 @@ h2 { font-size: 18px; color: #1a1a1a; word-break: break-all; }
 .chart-card h3 { font-size: 14px; margin: 0; color: #333; }
 .unit { color: #999; font-weight: 400; font-size: 12px; }
 .chart-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.toggle-group { display: flex; align-items: center; gap: 10px; }
+.toggle-label { display: flex; align-items: center; gap: 3px; font-size: 12px; color: #666; cursor: pointer; user-select: none; }
+.toggle-label input[type="checkbox"] { cursor: pointer; margin: 0; }
 .rated-inline { font-size: 12px; color: #999; display: flex; align-items: center; gap: 4px; }
 .rated-input {
   width: 48px; padding: 1px 4px; border: 1px solid #ddd; border-radius: 4px;
