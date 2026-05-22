@@ -64,6 +64,15 @@ public:
     static std::vector<ChargerDataPoint> downsample(
         const std::vector<ChargerDataPoint>& points,
         size_t target_count);
+
+    /// 计算某字段超过阈值的时间段和占比
+    /// 使用线性插值精确定位阈值交叉点
+    static ThresholdResult calcThreshold(
+        const std::vector<ChargerDataPoint>& points,
+        const std::string& field,
+        double threshold,
+        int64_t start_ms = 0,
+        int64_t end_ms = INT64_MAX);
 };
 
 }  // namespace chargerlog

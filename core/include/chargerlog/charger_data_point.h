@@ -41,6 +41,22 @@ struct FieldStats {
     int count = 0;            ///< 有效数据点数
 };
 
+/// 阈值超限时间段
+struct ThresholdSegment {
+    int64_t start_ms = 0;
+    int64_t end_ms = 0;
+};
+
+/// 阈值分析结果：某字段超过阈值的时间段和占比
+struct ThresholdResult {
+    std::string field_name;
+    double threshold_value = NAN;
+    int64_t total_time_ms = 0;       ///< 有效数据的时间跨度
+    int64_t above_time_ms = 0;       ///< 超过阈值的总时长
+    double above_pct = 0.0;          ///< above_time_ms / total_time_ms * 100
+    std::vector<ThresholdSegment> above_segments;
+};
+
 }  // namespace chargerlog
 
 #endif  // CHARGERLOG_CHARGER_DATA_POINT_H

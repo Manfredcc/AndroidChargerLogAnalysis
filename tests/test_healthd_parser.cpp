@@ -178,6 +178,46 @@ static bool test_project_config() {
     return true;
 }
 
+static bool test_threshold_calculation() {
+    // 创建测试数据: 0ms=3900, 1000ms=4100, 2000ms=4200, 3000ms=4300, 4000ms=4100, 5000ms=3900
+    std::vector<ChargerDataPoint> points;
+    double values[] = {3900, 4100, 4200, 4300, 4100, 3900};
+    for (int i = 0; i < 6; i++) {
+        ChargerDataPoint pt;
+        pt.elapsed_ms = i * 1000;
+        pt.battery_voltage_mv = values[i];
+        points.push_back(pt);
+    }
+
+    // 阈值 4150: 大约从 ~1250ms 到 ~3750ms (中间两个区间完整在线上的时间)
+    auto result = StatsCalculator::calcThreshold(points, "battery_voltage_mv", 4150.0);
+    ASSERT(result.total_time_ms == 5000, "total = 5s");
+    ASSERT(result.above_pct > 40.0 && result.above_pct < 60.0, "above ~50%");
+    ASSERT(result.above_segments.size() == 1, "one continuous segment");
+
+    // 全部低于阈值
+    auto all_below = StatsCalculator::calcThreshold(points, "battery_voltage_mv", 9999.0);
+    ASSERT(all_below.above_time_ms == 0, "all below → 0");
+    ASSERT(all_below.above_pct == 0.0, "all below → 0%");
+
+    // 全部高于阈值
+    auto all_above = StatsCalculator::calcThreshold(points, "battery_voltage_mv", 0.0);
+    ASSERT(all_above.above_time_ms == 5000, "all above → 5s");
+    ASSERT(all_above.above_pct == 100.0, "all above → 100%");
+
+    // 只有两个点的情况
+    std::vector<ChargerDataPoint> two;
+    ChargerDataPoint p1, p2;
+    p1.elapsed_ms = 0; p1.battery_voltage_mv = 4000;
+    p2.elapsed_ms = 1000; p2.battery_voltage_mv = 4200;
+    two.push_back(p1); two.push_back(p2);
+    auto two_result = StatsCalculator::calcThreshold(two, "battery_voltage_mv", 4100.0);
+    ASSERT(two_result.total_time_ms == 1000, "two pts total = 1s");
+    ASSERT(two_result.above_pct > 0.0 && two_result.above_pct < 100.0, "crossing middle");
+
+    return true;
+}
+
 // ── Main ────────────────────────────────────────────────────────────
 
 int main() {
@@ -192,6 +232,7 @@ int main() {
     all_pass &= TEST(data_point_has_get);
     all_pass &= TEST(stats_calculator);
     all_pass &= TEST(project_config);
+    all_pass &= TEST(threshold_calculation);
 
     std::cout << "\n==== " << (all_pass ? "ALL PASS" : "SOME FAILED") << " ====" << std::endl;
     return all_pass ? 0 : 1;

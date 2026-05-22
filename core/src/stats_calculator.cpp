@@ -128,4 +128,77 @@ std::vector<ChargerDataPoint> StatsCalculator::downsample(
     return result;
 }
 
+ThresholdResult StatsCalculator::calcThreshold(
+    const std::vector<ChargerDataPoint>& points,
+    const std::string& field,
+    double threshold,
+    int64_t start_ms,
+    int64_t end_ms) {
+
+    ThresholdResult result;
+    result.field_name = field;
+    result.threshold_value = threshold;
+
+    // 收集时间范围内有值的数据点
+    struct ValPoint { int64_t t; double v; };
+    std::vector<ValPoint> vps;
+    for (const auto& pt : points) {
+        if (pt.elapsed_ms < start_ms) continue;
+        if (pt.elapsed_ms > end_ms) break;
+        double v = pt.get(field);
+        if (!std::isnan(v)) vps.push_back({pt.elapsed_ms, v});
+    }
+
+    if (vps.size() < 2) return result;
+
+    result.total_time_ms = vps.back().t - vps.front().t;
+
+    // 线性插值遍历
+    int64_t seg_start = -1;
+    for (size_t i = 0; i < vps.size() - 1; i++) {
+        const auto& p1 = vps[i];
+        const auto& p2 = vps[i + 1];
+        int64_t dur = p2.t - p1.t;
+        if (dur <= 0) continue;
+
+        bool above1 = p1.v > threshold;
+        bool above2 = p2.v > threshold;
+
+        if (above1 && above2) {
+            // 整个区间都在阈值之上
+            result.above_time_ms += dur;
+            if (seg_start < 0) seg_start = p1.t;
+        } else if (above1 && !above2) {
+            // 从上方穿过阈值到下方，线性插值交叉点
+            double ratio = (threshold - p2.v) / (p1.v - p2.v);
+            int64_t cross_t = p2.t - static_cast<int64_t>(ratio * dur);
+            int64_t above_dur = std::max<int64_t>(0, cross_t - p1.t);
+            result.above_time_ms += above_dur;
+            if (seg_start < 0) seg_start = p1.t;
+            result.above_segments.push_back({seg_start, cross_t});
+            seg_start = -1;
+        } else if (!above1 && above2) {
+            // 从下方穿过阈值到上方
+            double ratio = (threshold - p1.v) / (p2.v - p1.v);
+            int64_t cross_t = p1.t + static_cast<int64_t>(ratio * dur);
+            int64_t above_dur = std::max<int64_t>(0, p2.t - cross_t);
+            result.above_time_ms += above_dur;
+            seg_start = cross_t;
+        }
+        // both below: nothing
+    }
+
+    // 关闭最后一个未关闭的段
+    if (seg_start >= 0) {
+        result.above_segments.push_back({seg_start, vps.back().t});
+    }
+
+    if (result.total_time_ms > 0) {
+        result.above_pct = static_cast<double>(result.above_time_ms)
+                         / static_cast<double>(result.total_time_ms) * 100.0;
+    }
+
+    return result;
+}
+
 }  // namespace chargerlog

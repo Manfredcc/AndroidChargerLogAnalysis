@@ -217,6 +217,9 @@ int main(int argc, char* argv[]) {
     int64_t end_ms = INT64_MAX;
     fs::path log_dir;
 
+    struct ThresholdArg { std::string field; double value; };
+    std::vector<ThresholdArg> cli_thresholds;
+
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
         if (arg == "--no-cache") {
@@ -243,16 +246,28 @@ int main(int argc, char* argv[]) {
                 std::cerr << "错误: --end 需要 HH:MM:SS 格式" << std::endl;
                 return 1;
             }
+        } else if (arg == "--threshold" && i + 1 < argc) {
+            i++;
+            std::string spec = argv[i];
+            auto eq_pos = spec.find('=');
+            if (eq_pos == std::string::npos) {
+                std::cerr << "错误: --threshold 需要 field=value 格式" << std::endl;
+                return 1;
+            }
+            ThresholdArg ta;
+            ta.field = spec.substr(0, eq_pos);
+            ta.value = std::stod(spec.substr(eq_pos + 1));
+            cli_thresholds.push_back(ta);
         } else if (arg[0] != '-') {
             log_dir = path_from_arg(argv[i]);
         } else {
-            std::cerr << "用法: chargerlog [--json] [--points] [--downsample N] [--no-cache] [--start HH:MM:SS] [--end HH:MM:SS] <日志目录>" << std::endl;
+            std::cerr << "用法: chargerlog [--json] [--points] [--downsample N] [--no-cache] [--start HH:MM:SS] [--end HH:MM:SS] [--threshold field=value]... <日志目录>" << std::endl;
             return 1;
         }
     }
 
     if (log_dir.empty()) {
-        std::cerr << "用法: chargerlog [--json] [--points] [--downsample N] [--no-cache] [--start HH:MM:SS] [--end HH:MM:SS] <日志目录>" << std::endl;
+        std::cerr << "用法: chargerlog [--json] [--points] [--downsample N] [--no-cache] [--start HH:MM:SS] [--end HH:MM:SS] [--threshold field=value]... <日志目录>" << std::endl;
         return 1;
     }
 
@@ -313,6 +328,13 @@ int main(int argc, char* argv[]) {
     }
     auto all_stats = StatsCalculator::calcAllFields(all_points, field_names, start_ms, end_ms);
 
+    // ── 2.5 阈值计算 (在全量数据上，非降采样) ─────────
+    std::vector<ThresholdResult> threshold_results;
+    for (const auto& ta : cli_thresholds) {
+        threshold_results.push_back(
+            StatsCalculator::calcThreshold(all_points, ta.field, ta.value, start_ms, end_ms));
+    }
+
     // ── 3. 输出结果 ────────────────────────────────────────
     if (json_mode) {
         // 机器可读 JSON 输出
@@ -343,6 +365,21 @@ int main(int argc, char* argv[]) {
             std::cout << "    }";
         }
         std::cout << "\n  ]";
+        if (!threshold_results.empty()) {
+            std::cout << ",\n  \"thresholds\": [\n";
+            for (size_t ti = 0; ti < threshold_results.size(); ti++) {
+                if (ti > 0) std::cout << ",\n";
+                const auto& tr = threshold_results[ti];
+                std::cout << "    {\n"
+                          << "      \"field\": \"" << jsonEscape(tr.field_name) << "\",\n"
+                          << "      \"value\": " << jsonDouble(tr.threshold_value) << ",\n"
+                          << "      \"total_time_ms\": " << tr.total_time_ms << ",\n"
+                          << "      \"above_time_ms\": " << tr.above_time_ms << ",\n"
+                          << "      \"above_pct\": " << jsonDouble(tr.above_pct) << "\n"
+                          << "    }";
+            }
+            std::cout << "\n  ]";
+        }
         if (points_mode) {
             std::cout << ",\n  \"points\": [\n";
             for (size_t pi = 0; pi < output_points.size(); pi++) {
@@ -386,6 +423,31 @@ int main(int argc, char* argv[]) {
 
         if (!any) {
             std::cout << "\n指定范围内无有效数据。" << std::endl;
+        }
+
+        if (!threshold_results.empty()) {
+            std::cout << "\n========== 阈值分析 ==========" << std::endl;
+            for (const auto& tr : threshold_results) {
+                std::cout << "\n" << tr.field_name << " > " << tr.threshold_value << std::endl;
+                if (tr.total_time_ms == 0) {
+                    std::cout << "  无有效数据" << std::endl;
+                    continue;
+                }
+                std::cout << "  总时长: "
+                          << (tr.total_time_ms / 60000) << "m "
+                          << ((tr.total_time_ms % 60000) / 1000) << "s" << std::endl;
+                std::cout << "  超过阈值: "
+                          << (tr.above_time_ms / 60000) << "m "
+                          << ((tr.above_time_ms % 60000) / 1000) << "s"
+                          << " (" << tr.above_pct << "%)" << std::endl;
+                if (!tr.above_segments.empty()) {
+                    std::cout << "  超限时段 (" << tr.above_segments.size() << " 段):" << std::endl;
+                    for (const auto& seg : tr.above_segments) {
+                        std::cout << "    " << msToHMS(seg.start_ms)
+                                  << " ~ " << msToHMS(seg.end_ms) << std::endl;
+                    }
+                }
+            }
         }
     }
 
