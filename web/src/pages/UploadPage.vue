@@ -1,13 +1,11 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { upload, getHistory, deleteHistory, type HistoryItem } from '../api'
+import { upload, getHistory, deleteHistory, selectPath, type HistoryItem } from '../api'
 
 const router = useRouter()
 
 const logDir = ref('')
-const start = ref('')
-const end = ref('')
 const noCache = ref(false)
 const loading = ref(false)
 const error = ref('')
@@ -20,6 +18,17 @@ async function loadHistory() {
   } catch { /* ignore */ }
 }
 
+async function doBrowse() {
+  try {
+    const result = await selectPath('file')
+    if (result.path) {
+      logDir.value = result.path
+    }
+  } catch (e: any) {
+    error.value = e.message || String(e)
+  }
+}
+
 async function doUpload() {
   if (!logDir.value.trim()) return
   loading.value = true
@@ -27,8 +36,6 @@ async function doUpload() {
   try {
     const result = await upload({
       log_dir: logDir.value.trim(),
-      start: start.value || undefined,
-      end: end.value || undefined,
       no_cache: noCache.value || undefined,
     })
     router.push(`/dashboard/${result.id}`)
@@ -51,19 +58,11 @@ loadHistory()
   <div class="upload-page">
     <div class="card">
       <h2>新建分析</h2>
-      <label>日志目录路径</label>
-      <input v-model="logDir" placeholder="例如: D:\Logs\chargerLog设备1"
-             @keyup.enter="doUpload" />
-
-      <div class="row">
-        <div>
-          <label>起始时间 (可选)</label>
-          <input v-model="start" placeholder="HH:MM:SS" />
-        </div>
-        <div>
-          <label>结束时间 (可选)</label>
-          <input v-model="end" placeholder="HH:MM:SS" />
-        </div>
+      <label>日志路径</label>
+      <div class="path-row">
+        <input v-model="logDir" placeholder="日志目录路径或压缩包路径 (支持 .zip, .tar.gz 等)"
+               @keyup.enter="doUpload" />
+        <button class="btn-browse" @click="doBrowse" :disabled="loading">浏览</button>
       </div>
 
       <label class="check">
@@ -107,8 +106,14 @@ loadHistory()
 h2 { font-size: 16px; margin-bottom: 16px; color: #333; }
 label { display: block; font-size: 13px; color: #666; margin-bottom: 4px; margin-top: 10px; }
 input[type="text"] { width: 100%; padding: 8px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
-.row { display: flex; gap: 12px; }
-.row > div { flex: 1; }
+.path-row { display: flex; gap: 8px; }
+.path-row input { flex: 1; }
+.btn-browse {
+  padding: 8px 16px; border: 1px solid #2563eb; border-radius: 4px;
+  background: #fff; color: #2563eb; font-size: 14px; cursor: pointer; white-space: nowrap;
+}
+.btn-browse:hover { background: #eff6ff; }
+.btn-browse:disabled { opacity: 0.5; cursor: not-allowed; }
 .check { display: flex; align-items: center; gap: 8px; margin: 14px 0; cursor: pointer; }
 .check input { width: auto; }
 .btn-primary {

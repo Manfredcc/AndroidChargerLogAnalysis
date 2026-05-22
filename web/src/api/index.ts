@@ -63,6 +63,17 @@ export async function upload(params: {
   return data
 }
 
+export async function selectPath(type: 'file' | 'directory' = 'file'): Promise<{ path: string }> {
+  const resp = await fetch(`${BASE}/select-path`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type }),
+  })
+  const data = await resp.json()
+  if (data.error) throw new Error(data.error)
+  return data
+}
+
 export async function getAnalysis(id: string): Promise<AnalysisResult> {
   const resp = await fetch(`${BASE}/analysis/${id}`)
   const data = await resp.json()

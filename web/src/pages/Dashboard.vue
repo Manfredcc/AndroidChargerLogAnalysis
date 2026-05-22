@@ -5,7 +5,7 @@ import * as echarts from 'echarts/core'
 import { LineChart } from 'echarts/charts'
 import { CanvasRenderer } from 'echarts/renderers'
 import { TitleComponent, TooltipComponent, GridComponent, LegendComponent } from 'echarts/components'
-import { getAnalysis, type AnalysisResult } from '../api'
+import { getAnalysis, type AnalysisResult, type DataPoint } from '../api'
 import { computeThreshold, fmtDuration, type ThresholdComputed } from '../utils/threshold'
 
 echarts.use([LineChart, CanvasRenderer, TitleComponent, TooltipComponent, GridComponent, LegendComponent])
@@ -19,6 +19,76 @@ const ratedCycles = ref(300)
 const showVoltage = ref(true)
 const showTemp = ref(true)
 
+// ── 时间范围 ──────────────────────────────
+const timeRangeMin = ref(0)
+const timeRangeMax = ref(0)
+const timeRangeMinInput = ref('')
+const timeRangeMaxInput = ref('')
+
+function parseHHMMSS(s: string): number {
+  const match = s.match(/^(\d{1,2}):(\d{2}):(\d{2})$/)
+  if (!match) return -1
+  return Number(match[1]) * 3600000 + Number(match[2]) * 60000 + Number(match[3]) * 1000
+}
+
+const validPoints = computed(() => {
+  if (!data.value) return []
+  return data.value.points.filter(p => p.t >= 0 && p.t <= 86400000 * 7)
+})
+
+const dataMinT = computed(() =>
+  validPoints.value.length > 0 ? validPoints.value[0].t : 0
+)
+const dataMaxT = computed(() =>
+  validPoints.value.length > 0 ? validPoints.value[validPoints.value.length - 1].t : 0
+)
+
+const filteredPoints = computed(() => {
+  if (!data.value || !data.value.points.length) return [] as DataPoint[]
+  return data.value.points.filter(p =>
+    p.t >= timeRangeMin.value && p.t <= timeRangeMax.value
+  )
+})
+
+function resetTimeRange() {
+  timeRangeMin.value = dataMinT.value
+  timeRangeMax.value = dataMaxT.value
+  timeRangeMinInput.value = fmtMs(dataMinT.value)
+  timeRangeMaxInput.value = fmtMs(dataMaxT.value)
+}
+
+function onSliderMinInput() {
+  if (timeRangeMin.value >= timeRangeMax.value) {
+    timeRangeMin.value = timeRangeMax.value - 1000
+  }
+  timeRangeMinInput.value = fmtMs(timeRangeMin.value)
+}
+
+function onSliderMaxInput() {
+  if (timeRangeMax.value <= timeRangeMin.value) {
+    timeRangeMax.value = timeRangeMin.value + 1000
+  }
+  timeRangeMaxInput.value = fmtMs(timeRangeMax.value)
+}
+
+function onMinInputChange() {
+  const ms = parseHHMMSS(timeRangeMinInput.value)
+  if (ms >= 0 && ms < timeRangeMax.value && ms >= dataMinT.value) {
+    timeRangeMin.value = ms
+  } else {
+    timeRangeMinInput.value = fmtMs(timeRangeMin.value)
+  }
+}
+
+function onMaxInputChange() {
+  const ms = parseHHMMSS(timeRangeMaxInput.value)
+  if (ms > timeRangeMin.value && ms <= dataMaxT.value) {
+    timeRangeMax.value = ms
+  } else {
+    timeRangeMaxInput.value = fmtMs(timeRangeMax.value)
+  }
+}
+
 // ── 阈值 refs ──────────────────────────────
 const voltageThreshold = ref<number | null>(null)
 const tempThreshold = ref<number | null>(null)
@@ -28,23 +98,23 @@ const cycleThreshold = ref<number | null>(null)
 
 const voltageThResult = computed<ThresholdComputed | null>(() => {
   if (voltageThreshold.value == null || !data.value) return null
-  return computeThreshold(data.value.points, 'v', voltageThreshold.value)
+  return computeThreshold(filteredPoints.value, 'v', voltageThreshold.value)
 })
 const tempThResult = computed<ThresholdComputed | null>(() => {
   if (tempThreshold.value == null || !data.value) return null
-  return computeThreshold(data.value.points, 'tmp', tempThreshold.value)
+  return computeThreshold(filteredPoints.value, 'tmp', tempThreshold.value)
 })
 const currentThResult = computed<ThresholdComputed | null>(() => {
   if (currentThreshold.value == null || !data.value) return null
-  return computeThreshold(data.value.points, 'cur', currentThreshold.value)
+  return computeThreshold(filteredPoints.value, 'cur', currentThreshold.value)
 })
 const levelThResult = computed<ThresholdComputed | null>(() => {
   if (levelThreshold.value == null || !data.value) return null
-  return computeThreshold(data.value.points, 'lvl', levelThreshold.value)
+  return computeThreshold(filteredPoints.value, 'lvl', levelThreshold.value)
 })
 const cycleThResult = computed<ThresholdComputed | null>(() => {
   if (cycleThreshold.value == null || !data.value) return null
-  return computeThreshold(data.value.points, 'cc', cycleThreshold.value)
+  return computeThreshold(filteredPoints.value, 'cc', cycleThreshold.value)
 })
 
 interface ChartDef {
@@ -138,8 +208,8 @@ function fmtMs(ms: number): string {
 }
 
 function combinedOption() {
-  if (!data.value || !data.value.points.length) return {}
-  const pts = data.value.points
+  if (!data.value || !filteredPoints.value.length) return {}
+  const pts = filteredPoints.value
   const vPairs = pts.map(p => [p.t, p.v] as [number, number | null])
   const tPairs = pts.map(p => [p.t, p.tmp] as [number, number | null])
 
@@ -219,8 +289,8 @@ function combinedOption() {
 }
 
 function currentOption() {
-  if (!data.value || !data.value.points.length) return {}
-  const pts = data.value.points
+  if (!data.value || !filteredPoints.value.length) return {}
+  const pts = filteredPoints.value
   const pairs = pts.map(p => [p.t, p.cur] as [number, number | null])
   const main: any = {
     type: 'line', data: pairs, name: '电流',
@@ -263,8 +333,8 @@ function currentOption() {
 }
 
 function levelOption() {
-  if (!data.value || !data.value.points.length) return {}
-  const pts = data.value.points
+  if (!data.value || !filteredPoints.value.length) return {}
+  const pts = filteredPoints.value
   const pairs = pts.map(p => [p.t, p.lvl] as [number, number | null])
   const main: any = {
     type: 'line', data: pairs, name: '电量',
@@ -309,8 +379,8 @@ function levelOption() {
 }
 
 function cycleOption() {
-  if (!data.value || !data.value.points.length) return {}
-  const pts = data.value.points
+  if (!data.value || !filteredPoints.value.length) return {}
+  const pts = filteredPoints.value
   const total = ratedCycles.value
   const pairs = pts.map(p => {
     const cc = p.cc
@@ -397,6 +467,10 @@ watch(currentThreshold, () => updateChart('current'))
 watch(levelThreshold, () => updateChart('level'))
 watch(cycleThreshold, () => updateChart('cycle'))
 
+watch([timeRangeMin, timeRangeMax], () => {
+  chartOrder.value.forEach(def => updateChart(def.id))
+})
+
 watch(chartOrder, async () => {
   await nextTick()
   initCharts()
@@ -417,6 +491,12 @@ function onResize() {
 onMounted(async () => {
   try {
     data.value = await getAnalysis(route.params.analysisId as string)
+    if (data.value && validPoints.value.length > 0) {
+      timeRangeMin.value = dataMinT.value
+      timeRangeMax.value = dataMaxT.value
+      timeRangeMinInput.value = fmtMs(dataMinT.value)
+      timeRangeMaxInput.value = fmtMs(dataMaxT.value)
+    }
     await nextTick()
     initCharts()
     window.addEventListener('resize', onResize)
@@ -442,14 +522,61 @@ onUnmounted(() => {
           <h2>{{ data.log_dir }}</h2>
           <p class="meta">
             {{ data.points_count }} 个数据点 ·
-            <span v-if="data.start || data.end">
-              范围 {{ data.start || '...' }} ~ {{ data.end || '...' }} ·
-            </span>
+            数据时间 {{ fmtMs(dataMinT) }} ~ {{ fmtMs(dataMaxT) }} ·
             {{ data.cached ? '从缓存加载' : '重新扫描' }} ·
             {{ new Date(data.created_at).toLocaleString() }}
           </p>
         </div>
         <button class="btn-back" @click="router.push('/history')">返回历史</button>
+      </div>
+
+      <div class="time-range-bar" v-if="data.points.length && dataMaxT > dataMinT">
+        <div class="time-range-header">
+          <span class="time-label">时间范围</span>
+          <span class="time-value">{{ fmtMs(timeRangeMin) }} ~ {{ fmtMs(timeRangeMax) }}</span>
+          <span class="time-dur">({{ fmtDuration(timeRangeMax - timeRangeMin) }})</span>
+          <button class="btn-reset" @click="resetTimeRange">重置全部</button>
+        </div>
+        <div class="time-range-controls">
+          <input
+            class="time-input time-input-left"
+            :value="timeRangeMinInput"
+            placeholder="HH:MM:SS"
+            @change="onMinInputChange"
+            @input="timeRangeMinInput = ($event.target as HTMLInputElement).value"
+          />
+          <div class="range-slider">
+            <input
+              type="range"
+              class="range-thumb range-thumb-min"
+              :min="dataMinT"
+              :max="dataMaxT"
+              step="1000"
+              :value="timeRangeMin"
+              @input="timeRangeMin = Number(($event.target as HTMLInputElement).value); onSliderMinInput()"
+            />
+            <input
+              type="range"
+              class="range-thumb range-thumb-max"
+              :min="dataMinT"
+              :max="dataMaxT"
+              step="1000"
+              :value="timeRangeMax"
+              @input="timeRangeMax = Number(($event.target as HTMLInputElement).value); onSliderMaxInput()"
+            />
+          </div>
+          <input
+            class="time-input time-input-right"
+            :value="timeRangeMaxInput"
+            placeholder="HH:MM:SS"
+            @change="onMaxInputChange"
+            @input="timeRangeMaxInput = ($event.target as HTMLInputElement).value"
+          />
+        </div>
+        <div class="time-range-labels">
+          <span>{{ fmtMs(dataMinT) }}</span>
+          <span>{{ fmtMs(dataMaxT) }}</span>
+        </div>
       </div>
 
       <div class="charts" v-if="data.points.length">
@@ -560,6 +687,65 @@ h2 { font-size: 18px; color: #1a1a1a; word-break: break-all; }
 .meta { color: #888; font-size: 13px; margin-top: 4px; }
 .btn-back { padding: 6px 16px; border: 1px solid #ddd; border-radius: 6px; background: #fff; cursor: pointer; font-size: 13px; }
 .btn-back:hover { border-color: #2563eb; color: #2563eb; }
+
+/* ── Time Range Slider ── */
+.time-range-bar {
+  background: #fff; border-radius: 8px; padding: 16px 20px;
+  margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.08);
+}
+.time-range-header {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
+}
+.time-label { font-size: 13px; color: #666; font-weight: 500; }
+.time-value { font-size: 14px; color: #1a1a1a; font-weight: 600; font-family: monospace; }
+.time-dur { font-size: 12px; color: #999; }
+.btn-reset {
+  margin-left: auto; padding: 2px 12px; border: 1px solid #ddd;
+  border-radius: 4px; background: #fff; font-size: 12px; color: #666; cursor: pointer;
+}
+.btn-reset:hover { border-color: #2563eb; color: #2563eb; }
+
+.time-range-controls {
+  display: flex; align-items: center; gap: 10px;
+}
+.time-input {
+  width: 72px; padding: 4px 6px; border: 1px solid #ddd; border-radius: 4px;
+  font-size: 12px; font-family: monospace; text-align: center; color: #333;
+}
+.time-input:focus { outline: none; border-color: #2563eb; }
+
+.range-slider {
+  position: relative; flex: 1; height: 28px; display: flex; align-items: center;
+}
+.range-slider input[type="range"] {
+  position: absolute; width: 100%; margin: 0; padding: 0;
+  -webkit-appearance: none; appearance: none; background: transparent;
+  pointer-events: none; z-index: 1;
+}
+.range-slider input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px; background: #e0e0e0; border-radius: 2px;
+}
+.range-slider input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: #2563eb; border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,.2);
+  cursor: pointer; pointer-events: auto; margin-top: -6px;
+}
+.range-slider input[type="range"]::-moz-range-track {
+  height: 4px; background: #e0e0e0; border-radius: 2px;
+}
+.range-slider input[type="range"]::-moz-range-thumb {
+  width: 16px; height: 16px; border-radius: 50%;
+  background: #2563eb; border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,.2);
+  cursor: pointer; pointer-events: auto;
+}
+
+.time-range-labels {
+  display: flex; justify-content: space-between; margin-top: 4px;
+  font-size: 11px; color: #bbb; font-family: monospace;
+}
 
 .charts { display: flex; flex-direction: column; gap: 16px; }
 .chart-card { background: #fff; border-radius: 8px; padding: 16px 20px 8px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
