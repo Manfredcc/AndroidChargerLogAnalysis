@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import * as echarts from 'echarts/core'
 import { LineChart } from 'echarts/charts'
 import { CanvasRenderer } from 'echarts/renderers'
@@ -11,7 +11,6 @@ import { computeThreshold, fmtDuration, type ThresholdComputed } from '../utils/
 echarts.use([LineChart, CanvasRenderer, TitleComponent, TooltipComponent, GridComponent, LegendComponent])
 
 const route = useRoute()
-const router = useRouter()
 
 const data = ref<AnalysisResult | null>(null)
 const loading = ref(false)
@@ -538,7 +537,6 @@ onUnmounted(() => {
             {{ new Date(data.created_at).toLocaleString() }}
           </p>
         </div>
-        <button class="btn-back" @click="router.push('/history')">返回历史</button>
       </div>
 
       <div class="time-range-bar" v-if="data.points.length && dataMaxT > dataMinT">
@@ -697,9 +695,6 @@ onUnmounted(() => {
 .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
 h2 { font-size: 18px; color: #1a1a1a; word-break: break-all; }
 .meta { color: #888; font-size: 13px; margin-top: 4px; }
-.btn-back { padding: 6px 16px; border: 1px solid #ddd; border-radius: 6px; background: #fff; cursor: pointer; font-size: 13px; }
-.btn-back:hover { border-color: #2563eb; color: #2563eb; }
-
 /* ── Time Range Slider ── */
 .time-range-bar {
   background: #fff; border-radius: 8px; padding: 16px 20px;
