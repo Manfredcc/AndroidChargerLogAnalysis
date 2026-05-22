@@ -15,9 +15,48 @@ const router = useRouter()
 const data = ref<AnalysisResult | null>(null)
 const error = ref('')
 const ratedCycles = ref(300)
-const chartRefs = ref<HTMLElement[]>([])
+
+interface ChartDef {
+  id: string
+  title: string
+  type: 'combined' | 'current' | 'level' | 'cycle'
+  height: number
+}
+const chartOrder = ref<ChartDef[]>([
+  { id: 'combined', title: '电池电压 · 温度', type: 'combined', height: 300 },
+  { id: 'current',  title: '电池电流',       type: 'current',  height: 240 },
+  { id: 'level',    title: '电量',           type: 'level',    height: 240 },
+  { id: 'cycle',    title: '剩余循环次数',   type: 'cycle',    height: 240 },
+])
+
+const chartRefs = ref<Map<string, HTMLElement>>(new Map())
 let charts: echarts.ECharts[] = []
 let cycleChart: echarts.ECharts | null = null
+
+// ── 拖拽排序 ──────────────────────────────
+let dragIdx = -1
+function onDragStart(e: DragEvent, idx: number) {
+  dragIdx = idx
+  const el = e.target as HTMLElement
+  el.classList.add('dragging')
+  e.dataTransfer!.effectAllowed = 'move'
+}
+function onDragOver(e: DragEvent, idx: number) {
+  e.preventDefault()
+  if (idx === dragIdx) return
+  e.dataTransfer!.dropEffect = 'move'
+}
+function onDrop(_e: DragEvent, idx: number) {
+  if (idx === dragIdx || dragIdx < 0) return
+  const items = [...chartOrder.value]
+  const [moved] = items.splice(dragIdx, 1)
+  items.splice(idx, 0, moved)
+  chartOrder.value = items
+}
+function onDragEnd(e: DragEvent) {
+  (e.target as HTMLElement).classList.remove('dragging')
+  dragIdx = -1
+}
 
 function fmtMs(ms: number): string {
   const h = Math.floor(ms / 3600000)
@@ -254,41 +293,40 @@ function disposeCharts() {
   cycleChart = null
 }
 
+const optionFns: Record<string, () => any> = {
+  combined: combinedOption,
+  current: currentOption,
+  level: levelOption,
+  cycle: cycleOption,
+}
+
 function initCharts() {
   disposeCharts()
-  const refs = chartRefs.value
-  if (refs[0]) {
-    const c1 = echarts.init(refs[0])
-    c1.setOption(combinedOption())
-    charts.push(c1)
-  }
-  if (refs[1]) {
-    const c2 = echarts.init(refs[1])
-    c2.setOption(currentOption())
-    charts.push(c2)
-  }
-  if (refs[2]) {
-    const c3 = echarts.init(refs[2])
-    c3.setOption(levelOption())
-    charts.push(c3)
-  }
-  if (refs[3]) {
-    cycleChart = echarts.init(refs[3])
-    cycleChart.setOption(cycleOption())
-    charts.push(cycleChart)
-  }
+  chartOrder.value.forEach(def => {
+    const el = chartRefs.value.get(def.id)
+    if (!el) return
+    const chart = echarts.init(el)
+    chart.setOption(optionFns[def.id]())
+    charts.push(chart)
+    if (def.id === 'cycle') cycleChart = chart
+  })
 }
 
 watch(ratedCycles, () => {
   if (cycleChart) cycleChart.setOption(cycleOption())
 })
 
+watch(chartOrder, async () => {
+  await nextTick()
+  initCharts()
+})
+
 let resizeTimer: ReturnType<typeof setTimeout> | null = null
 function onResize() {
   if (resizeTimer) clearTimeout(resizeTimer)
   resizeTimer = setTimeout(() => {
-    const widths = chartRefs.value.map(el => el?.clientWidth || 0)
-    if (widths.some(w => w <= 0)) return
+    const widths = [...chartRefs.value.values()].map(el => el?.clientWidth || 0)
+    if (widths.length === 0 || widths.some(w => w <= 0)) return
     charts.forEach(c => {
       try { c.resize() } catch { /* ignore zero-size errors */ }
     })
@@ -334,32 +372,47 @@ onUnmounted(() => {
       </div>
 
       <div class="charts" v-if="data.points.length">
-        <div class="chart-card">
-          <h3>电池电压 · 温度</h3>
-          <div :ref="el => { if (el) chartRefs[0] = el as HTMLElement }" style="height:300px" />
-        </div>
-        <div class="chart-card">
-          <h3>电池电流 <span class="unit">(mA)</span></h3>
-          <div :ref="el => { if (el) chartRefs[1] = el as HTMLElement }" style="height:240px" />
-        </div>
-        <div class="chart-card">
-          <h3>电量 <span class="unit">(%)</span></h3>
-          <div :ref="el => { if (el) chartRefs[2] = el as HTMLElement }" style="height:240px" />
-        </div>
-        <div class="chart-card">
-          <div class="chart-card-header">
-            <h3>剩余循环次数</h3>
-            <div class="rated-inline">
-              额定：<input
-                type="number"
-                class="rated-input"
-                :value="ratedCycles"
-                @input="ratedCycles = Number(($event.target as HTMLInputElement).value) || 0"
-                min="0"
-              /> 次
+        <div
+          class="chart-card"
+          v-for="(def, idx) in chartOrder"
+          :key="def.id"
+          draggable="true"
+          @dragstart="onDragStart($event, idx)"
+          @dragover="onDragOver($event, idx)"
+          @drop="onDrop($event, idx)"
+          @dragend="onDragEnd"
+        >
+          <!-- combined: 双 Y 轴图 -->
+          <template v-if="def.type === 'combined'">
+            <h3>{{ def.title }}</h3>
+            <div :ref="el => { if (el) chartRefs.set('combined', el as HTMLElement) }" :style="{ height: def.height + 'px' }" />
+          </template>
+          <!-- current: 电流图 -->
+          <template v-else-if="def.type === 'current'">
+            <h3>{{ def.title }} <span class="unit">(mA)</span></h3>
+            <div :ref="el => { if (el) chartRefs.set('current', el as HTMLElement) }" :style="{ height: def.height + 'px' }" />
+          </template>
+          <!-- level: 电量图 -->
+          <template v-else-if="def.type === 'level'">
+            <h3>{{ def.title }} <span class="unit">(%)</span></h3>
+            <div :ref="el => { if (el) chartRefs.set('level', el as HTMLElement) }" :style="{ height: def.height + 'px' }" />
+          </template>
+          <!-- cycle: 剩余循环图 + 额定输入 -->
+          <template v-else-if="def.type === 'cycle'">
+            <div class="chart-card-header">
+              <h3>{{ def.title }}</h3>
+              <div class="rated-inline">
+                额定：<input
+                  type="number"
+                  class="rated-input"
+                  :value="ratedCycles"
+                  @input="ratedCycles = Number(($event.target as HTMLInputElement).value) || 0"
+                  min="0"
+                /> 次
+              </div>
             </div>
-          </div>
-          <div :ref="el => { if (el) chartRefs[3] = el as HTMLElement }" style="height:240px" />
+            <div :ref="el => { if (el) chartRefs.set('cycle', el as HTMLElement) }" :style="{ height: def.height + 'px' }" />
+          </template>
         </div>
       </div>
       <div class="empty" v-else-if="!error">
@@ -389,5 +442,8 @@ h2 { font-size: 18px; color: #1a1a1a; word-break: break-all; }
   font-size: 12px; text-align: center; color: #333;
 }
 .rated-input:focus { outline: none; border-color: #8b5cf6; }
+.chart-card[draggable] { cursor: grab; }
+.chart-card[draggable]:active { cursor: grabbing; }
+.chart-card.dragging { opacity: 0.4; }
 .empty { text-align: center; color: #999; padding: 60px 0; }
 </style>
