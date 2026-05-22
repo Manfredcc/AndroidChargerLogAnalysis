@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { upload, getHistory, deleteHistory, selectPath, type HistoryItem } from '../api'
 
@@ -10,6 +10,8 @@ const noCache = ref(false)
 const loading = ref(false)
 const error = ref('')
 const history = ref<HistoryItem[]>([])
+const showBrowseMenu = ref(false)
+const browseWrapper = ref<HTMLElement | null>(null)
 
 async function loadHistory() {
   try {
@@ -18,16 +20,34 @@ async function loadHistory() {
   } catch { /* ignore */ }
 }
 
-async function doBrowse() {
+async function doBrowseDir() {
+  showBrowseMenu.value = false
   try {
     const result = await selectPath('directory')
-    if (result.path) {
-      logDir.value = result.path
-    }
+    if (result.path) logDir.value = result.path
   } catch (e: any) {
     error.value = e.message || String(e)
   }
 }
+
+async function doBrowseFile() {
+  showBrowseMenu.value = false
+  try {
+    const result = await selectPath('file')
+    if (result.path) logDir.value = result.path
+  } catch (e: any) {
+    error.value = e.message || String(e)
+  }
+}
+
+function onClickOutside(e: MouseEvent) {
+  if (browseWrapper.value && !browseWrapper.value.contains(e.target as Node)) {
+    showBrowseMenu.value = false
+  }
+}
+
+onMounted(() => document.addEventListener('click', onClickOutside))
+onUnmounted(() => document.removeEventListener('click', onClickOutside))
 
 async function doUpload() {
   if (!logDir.value.trim()) return
@@ -62,7 +82,15 @@ loadHistory()
       <div class="path-row">
         <input v-model="logDir" placeholder="日志目录路径或压缩包路径 (支持 .zip, .tar.gz 等)"
                @keyup.enter="doUpload" />
-        <button class="btn-browse" @click="doBrowse" :disabled="loading">浏览</button>
+        <div class="browse-wrapper" ref="browseWrapper">
+          <button class="btn-browse" @click="showBrowseMenu = !showBrowseMenu" :disabled="loading">
+            浏览 ▾
+          </button>
+          <div class="browse-menu" v-if="showBrowseMenu">
+            <div class="browse-menu-item" @click="doBrowseDir">选择日志目录</div>
+            <div class="browse-menu-item" @click="doBrowseFile">选择压缩文件</div>
+          </div>
+        </div>
       </div>
 
       <label class="check">
@@ -114,6 +142,16 @@ input[type="text"] { width: 100%; padding: 8px 10px; border: 1px solid #ddd; bor
 }
 .btn-browse:hover { background: #eff6ff; }
 .btn-browse:disabled { opacity: 0.5; cursor: not-allowed; }
+.browse-wrapper { position: relative; }
+.browse-menu {
+  position: absolute; top: 100%; right: 0; margin-top: 4px;
+  background: #fff; border: 1px solid #e0e0e0; border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,.1); z-index: 100; min-width: 140px; overflow: hidden;
+}
+.browse-menu-item {
+  padding: 8px 14px; font-size: 13px; color: #333; cursor: pointer; white-space: nowrap;
+}
+.browse-menu-item:hover { background: #f0f5ff; color: #2563eb; }
 .check { display: flex; align-items: center; gap: 8px; margin: 14px 0; cursor: pointer; }
 .check input { width: auto; }
 .btn-primary {
