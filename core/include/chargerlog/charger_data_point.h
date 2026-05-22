@@ -21,6 +21,7 @@ struct ChargerDataPoint {
     double bus_current_ma = NAN;           ///< 线上电流 (mA)
     double battery_temperature_c = NAN;    ///< 电池温度 (°C)
     double battery_level_pct = NAN;        ///< 电池电量百分比 (%)
+    double charge_cycle_count = NAN;       ///< 充电循环次数 (cc)
 
     /// 判断某字段是否有值
     bool has(const std::string& field) const;

@@ -34,6 +34,7 @@ static const FieldEntry kFields[] = {
     {"bus_current_ma",        &ChargerDataPoint::bus_current_ma},
     {"battery_temperature_c", &ChargerDataPoint::battery_temperature_c},
     {"battery_level_pct",     &ChargerDataPoint::battery_level_pct},
+    {"charge_cycle_count",    &ChargerDataPoint::charge_cycle_count},
 };
 
 }  // anonymous namespace
@@ -59,6 +60,7 @@ std::vector<std::string> ChargerDataPoint::availableFields() const {
     if (!std::isnan(bus_current_ma))        result.emplace_back("bus_current_ma");
     if (!std::isnan(battery_temperature_c)) result.emplace_back("battery_temperature_c");
     if (!std::isnan(battery_level_pct))     result.emplace_back("battery_level_pct");
+    if (!std::isnan(charge_cycle_count))    result.emplace_back("charge_cycle_count");
     return result;
 }
 

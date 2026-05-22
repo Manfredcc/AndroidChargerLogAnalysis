@@ -112,6 +112,8 @@ std::optional<ChargerDataPoint> HealthdParser::parseLine(const std::string& line
         pt.battery_current_ma = current_ua / 1000.0;
     }
 
+    pt.charge_cycle_count = readField("cc");
+
     // bus_voltage / bus_current: healthd 不提供, 保持 NAN
 
     return pt;
@@ -123,6 +125,7 @@ std::vector<std::string> HealthdParser::supportedFields() const {
         "battery_voltage_mv",
         "battery_temperature_c",
         "battery_level_pct",
+        "charge_cycle_count",
     };
 }
 

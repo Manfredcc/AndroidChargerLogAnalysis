@@ -353,6 +353,7 @@ int main(int argc, char* argv[]) {
                           << ",\"tmp\":" << jsonDouble(pt.battery_temperature_c)
                           << ",\"cur\":" << jsonDouble(pt.battery_current_ma)
                           << ",\"lvl\":" << jsonDouble(pt.battery_level_pct)
+                          << ",\"cc\":" << jsonDouble(pt.charge_cycle_count)
                           << "}";
             }
             std::cout << "\n  ]";

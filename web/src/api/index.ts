@@ -17,6 +17,7 @@ export interface DataPoint {
   tmp: number | null // battery_temperature_c
   cur: number | null // battery_current_ma
   lvl: number | null // battery_level_pct
+  cc: number | null  // charge_cycle_count
 }
 
 export interface AnalysisResult {

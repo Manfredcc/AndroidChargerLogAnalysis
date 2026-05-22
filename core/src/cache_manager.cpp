@@ -135,6 +135,7 @@ bool CacheManager::save(const std::filesystem::path& cache_path,
             << double_to_str(pt.battery_level_pct) << "|"
             << double_to_str(pt.bus_voltage_mv) << "|"
             << double_to_str(pt.bus_current_ma) << "|"
+            << double_to_str(pt.charge_cycle_count) << "|"
             << pt.timestamp_str << "\n";
     }
 
@@ -197,17 +198,17 @@ CacheManager::load(const std::filesystem::path& cache_path, uint64_t fingerprint
         size_t start = 0;
         size_t end;
 
-        // 分割 8 个字段（用 | 分隔）
+        // 分割 9 个字段（用 | 分隔）
         // timestamp_str 是最后一个字段，可能包含空格但不含 |
-        while ((end = line.find('|', start)) != std::string::npos && tokens.size() < 7) {
+        while ((end = line.find('|', start)) != std::string::npos && tokens.size() < 8) {
             tokens.push_back(line.substr(start, end - start));
             start = end + 1;
         }
         // 剩余部分是 timestamp_str
         tokens.push_back(line.substr(start));
 
-        // 需要恰好 8 个字段
-        if (tokens.size() != 8) {
+        // 需要恰好 9 个字段
+        if (tokens.size() != 9) {
             return std::nullopt;  // 格式错误
         }
 
@@ -225,7 +226,8 @@ CacheManager::load(const std::filesystem::path& cache_path, uint64_t fingerprint
         pt.battery_level_pct     = str_to_double(tokens[4]);
         pt.bus_voltage_mv        = str_to_double(tokens[5]);
         pt.bus_current_ma        = str_to_double(tokens[6]);
-        pt.timestamp_str         = tokens[7];
+        pt.charge_cycle_count    = str_to_double(tokens[7]);
+        pt.timestamp_str         = tokens[8];
 
         points.push_back(std::move(pt));
     }

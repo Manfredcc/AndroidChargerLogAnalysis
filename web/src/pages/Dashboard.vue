@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import * as echarts from 'echarts/core'
 import { LineChart } from 'echarts/charts'
@@ -14,8 +14,10 @@ const router = useRouter()
 
 const data = ref<AnalysisResult | null>(null)
 const error = ref('')
+const ratedCycles = ref(300)
 const chartRefs = ref<HTMLElement[]>([])
 let charts: echarts.ECharts[] = []
+let cycleChart: echarts.ECharts | null = null
 
 function fmtMs(ms: number): string {
   const h = Math.floor(ms / 3600000)
@@ -193,9 +195,63 @@ function levelOption() {
   }
 }
 
+function cycleOption() {
+  if (!data.value || !data.value.points.length) return {}
+  const pts = data.value.points
+  const total = ratedCycles.value
+  const pairs = pts.map(p => {
+    const cc = p.cc
+    if (cc == null) return [p.t, null] as [number, number | null]
+    return [p.t, total - cc] as [number, number | null]
+  })
+
+  return {
+    tooltip: {
+      trigger: 'axis',
+      formatter: (params: any) => {
+        const p = params[0]
+        if (!p || p.data[1] == null) return ''
+        return `${fmtMs(p.data[0])}<br/>剩余循环: ${p.data[1]} / ${total}`
+      },
+    },
+    grid: { left: 50, right: 20, top: 10, bottom: 30 },
+    xAxis: {
+      type: 'value',
+      scale: true,
+      axisLabel: { fontSize: 10, formatter: (ms: number) => fmtMs(ms) },
+      splitLine: { show: false },
+    },
+    yAxis: {
+      type: 'value',
+      name: '次',
+      max: total || undefined,
+      minInterval: 1,
+      nameTextStyle: { fontSize: 11 },
+      axisLabel: { fontSize: 10 },
+      splitLine: { lineStyle: { color: '#f0f0f0', type: 'dashed' as const } },
+    },
+    series: [{
+      type: 'line',
+      data: pairs,
+      name: '剩余循环',
+      step: 'end',
+      smooth: false,
+      symbol: 'none',
+      connectNulls: true,
+      lineStyle: { color: '#8b5cf6', width: 2 },
+      itemStyle: { color: '#8b5cf6' },
+      areaStyle: {
+        color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [{ offset: 0, color: '#8b5cf620' }, { offset: 1, color: '#8b5cf604' }] },
+      },
+    }],
+  }
+}
+
 function disposeCharts() {
   charts.forEach(c => c.dispose())
   charts = []
+  cycleChart = null
 }
 
 function initCharts() {
@@ -216,7 +272,16 @@ function initCharts() {
     c3.setOption(levelOption())
     charts.push(c3)
   }
+  if (refs[3]) {
+    cycleChart = echarts.init(refs[3])
+    cycleChart.setOption(cycleOption())
+    charts.push(cycleChart)
+  }
 }
+
+watch(ratedCycles, () => {
+  if (cycleChart) cycleChart.setOption(cycleOption())
+})
 
 let resizeTimer: ReturnType<typeof setTimeout> | null = null
 function onResize() {
@@ -281,6 +346,21 @@ onUnmounted(() => {
           <h3>电量 <span class="unit">(%)</span></h3>
           <div :ref="el => { if (el) chartRefs[2] = el as HTMLElement }" style="height:240px" />
         </div>
+        <div class="chart-card">
+          <div class="chart-card-header">
+            <h3>剩余循环次数</h3>
+            <div class="rated-inline">
+              额定：<input
+                type="number"
+                class="rated-input"
+                :value="ratedCycles"
+                @input="ratedCycles = Number(($event.target as HTMLInputElement).value) || 0"
+                min="0"
+              /> 次
+            </div>
+          </div>
+          <div :ref="el => { if (el) chartRefs[3] = el as HTMLElement }" style="height:240px" />
+        </div>
       </div>
       <div class="empty" v-else-if="!error">
         暂无数据点。请确认日志目录中包含 healthd 数据。
@@ -300,7 +380,14 @@ h2 { font-size: 18px; color: #1a1a1a; word-break: break-all; }
 
 .charts { display: flex; flex-direction: column; gap: 16px; }
 .chart-card { background: #fff; border-radius: 8px; padding: 16px 20px 8px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-.chart-card h3 { font-size: 14px; margin: 0 0 4px; color: #333; }
+.chart-card h3 { font-size: 14px; margin: 0; color: #333; }
 .unit { color: #999; font-weight: 400; font-size: 12px; }
+.chart-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.rated-inline { font-size: 12px; color: #999; display: flex; align-items: center; gap: 4px; }
+.rated-input {
+  width: 48px; padding: 1px 4px; border: 1px solid #ddd; border-radius: 4px;
+  font-size: 12px; text-align: center; color: #333;
+}
+.rated-input:focus { outline: none; border-color: #8b5cf6; }
 .empty { text-align: center; color: #999; padding: 60px 0; }
 </style>
