@@ -13,10 +13,11 @@ ChargerLogAnalysis — Flask Web API 入口。
   flask run --host=0.0.0.0 --port=5000
 """
 
+import os
 import sys
 from pathlib import Path
 
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request, current_app
 from flask_cors import CORS
 
 # 确保 server/ 目录在 sys.path 中，使 utils/ 和 routes/ 可导入
@@ -25,8 +26,8 @@ if str(_server_dir) not in sys.path:
     sys.path.insert(0, str(_server_dir))
 
 
-def create_app() -> Flask:
-    app = Flask(__name__)
+def create_app(static_folder: str = None) -> Flask:
+    app = Flask(__name__, static_folder=static_folder, static_url_path='' if static_folder else None)
 
     # 允许跨域请求（前端独立部署时必需）
     CORS(app, resources={r"/api/*": {"origins": "*"}})
@@ -43,7 +44,9 @@ def create_app() -> Flask:
     # ── 全局错误处理 ──────────────────────────────────────
     @app.errorhandler(404)
     def not_found(e):
-        return jsonify({"error": "接口不存在"}), 404
+        if request.path.startswith("/api/"):
+            return jsonify({"error": "接口不存在"}), 404
+        return "Not Found", 404
 
     @app.errorhandler(500)
     def internal_error(e):
@@ -52,6 +55,9 @@ def create_app() -> Flask:
     # ── 根路径 ──────────────────────────────────────────
     @app.route("/")
     def index():
+        if static_folder:
+            from flask import send_from_directory
+            return send_from_directory(static_folder, "index.html")
         return r"""<!DOCTYPE html>
 <html lang="zh">
 <head>
@@ -188,6 +194,18 @@ loadHistory();
 </script>
 </body>
 </html>"""
+
+    # ── 心跳与关闭 ──────────────────────────────────────
+    @app.route("/api/heartbeat", methods=["POST"])
+    def heartbeat():
+        update = current_app.config.get('_heartbeat_update')
+        if update:
+            update()
+        return jsonify({"status": "ok"}), 200
+
+    @app.route("/api/shutdown", methods=["POST"])
+    def shutdown():
+        os._exit(0)
 
     # ── 健康检查 ──────────────────────────────────────────
     @app.route("/api/health")

@@ -6,16 +6,12 @@ C++ chargerlog 可执行文件的 Python 封装。
 
 import json
 import subprocess
-from pathlib import Path
+import sys
 from typing import Optional, Any
 
+from config import get_chargerlog_bin
 
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-_CHARGERLOG_BIN = _PROJECT_ROOT / "core" / "build" / "chargerlog"
-
-# Windows 下 CMake 可能加 .exe 后缀
-if not _CHARGERLOG_BIN.exists():
-    _CHARGERLOG_BIN = _CHARGERLOG_BIN.with_suffix(".exe")
+_CHARGERLOG_BIN = get_chargerlog_bin()
 
 
 class ChargerLogError(RuntimeError):
@@ -78,6 +74,7 @@ def run_chargerlog(
             text=True,
             timeout=timeout,
             encoding="utf-8",
+            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
         )
     except subprocess.TimeoutExpired:
         raise ChargerLogError(f"chargerlog 执行超时 ({timeout}s)")

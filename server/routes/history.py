@@ -5,7 +5,7 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, request
 
-from routes.upload import _list_analyses, _load_analysis, HISTORY_DIR
+from routes.upload import _list_analyses, _load_analysis, _get_history_dir
 
 history_bp = Blueprint("history", __name__)
 
@@ -44,7 +44,7 @@ def get_history_detail(analysis_id: str):
 @history_bp.route("/api/history/<analysis_id>", methods=["DELETE"])
 def delete_history(analysis_id: str):
     """删除指定分析记录。"""
-    filepath = HISTORY_DIR / f"{analysis_id}.json"
+    filepath = _get_history_dir() / f"{analysis_id}.json"
     if not filepath.exists():
         return jsonify({"error": f"分析记录不存在: {analysis_id}"}), 404
     os.remove(filepath)

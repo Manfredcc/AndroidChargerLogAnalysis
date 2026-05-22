@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 
 const router = useRouter()
@@ -7,6 +8,24 @@ const route = useRoute()
 function isActive(path: string) {
   return route.path.startsWith(path)
 }
+
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+
+function sendHeartbeat() {
+  fetch('/api/heartbeat', { method: 'POST' }).catch(() => {})
+}
+
+onMounted(() => {
+  sendHeartbeat()
+  heartbeatTimer = setInterval(sendHeartbeat, 10_000)
+  window.addEventListener('beforeunload', () => {
+    navigator.sendBeacon('/api/shutdown')
+  })
+})
+
+onUnmounted(() => {
+  if (heartbeatTimer) clearInterval(heartbeatTimer)
+})
 </script>
 
 <template>

@@ -10,28 +10,32 @@ from tkinter import filedialog
 
 from flask import Blueprint, request, jsonify, current_app
 
+from config import get_history_dir
 from utils.cpp_bridge import run_chargerlog, ChargerLogError
 
 upload_bp = Blueprint("upload", __name__)
 
-HISTORY_DIR = Path(__file__).resolve().parent.parent / "history"
-
 _ARCHIVE_EXTS = (".zip", ".tar.gz", ".tar.bz2", ".tar.xz", ".tgz", ".tar")
 
 
+def _get_history_dir() -> Path:
+    """每次调用时动态获取 history 目录，确保 frozen/dev 模式路径正确。"""
+    return get_history_dir()
+
+
 def _ensure_history_dir() -> None:
-    HISTORY_DIR.mkdir(parents=True, exist_ok=True)
+    _get_history_dir().mkdir(parents=True, exist_ok=True)
 
 
 def _save_analysis(analysis_id: str, data: dict) -> None:
     _ensure_history_dir()
-    filepath = HISTORY_DIR / f"{analysis_id}.json"
+    filepath = _get_history_dir() / f"{analysis_id}.json"
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
 def _load_analysis(analysis_id: str) -> dict | None:
-    filepath = HISTORY_DIR / f"{analysis_id}.json"
+    filepath = _get_history_dir() / f"{analysis_id}.json"
     if not filepath.exists():
         return None
     with open(filepath, "r", encoding="utf-8") as f:
@@ -40,7 +44,7 @@ def _load_analysis(analysis_id: str) -> dict | None:
 
 def _list_analyses(page: int = 1, limit: int = 20) -> list[dict]:
     _ensure_history_dir()
-    files = sorted(HISTORY_DIR.glob("*.json"), key=os.path.getmtime, reverse=True)
+    files = sorted(_get_history_dir().glob("*.json"), key=os.path.getmtime, reverse=True)
     total = len(files)
     start = (page - 1) * limit
     end = start + limit
