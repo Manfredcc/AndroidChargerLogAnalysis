@@ -51,11 +51,16 @@ const filteredPoints = computed(() => {
   )
 })
 
-function resetTimeRange() {
+function resetAll() {
   timeRangeMin.value = dataMinT.value
   timeRangeMax.value = dataMaxT.value
   timeRangeMinInput.value = fmtMs(dataMinT.value)
   timeRangeMaxInput.value = fmtMs(dataMaxT.value)
+  voltageThreshold.value = null
+  tempThreshold.value = null
+  currentThreshold.value = null
+  levelThreshold.value = null
+  cycleThreshold.value = null
 }
 
 function onSliderMinInput() {
@@ -544,7 +549,7 @@ onUnmounted(() => {
           <span class="time-label">时间范围</span>
           <span class="time-value">{{ fmtMs(timeRangeMin) }} ~ {{ fmtMs(timeRangeMax) }}</span>
           <span class="time-dur">({{ fmtDuration(timeRangeMax - timeRangeMin) }})</span>
-          <button class="btn-reset" @click="resetTimeRange">重置全部</button>
+          <button class="btn-reset" @click="resetAll">重置全部参数</button>
         </div>
         <div class="time-range-controls">
           <input
