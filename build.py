@@ -54,7 +54,7 @@ def build_pyinstaller() -> None:
     if not chargerlog_exe.exists():
         sys.exit("ERROR: chargerlog.exe 不存在，请先编译 C++ 或去掉 --skip-cpp")
 
-    run(["pyinstaller", str(ROOT / "chargerlog.spec")], cwd=ROOT, desc="pyinstaller")
+    run(["pyinstaller", "-y", str(ROOT / "chargerlog.spec")], cwd=ROOT, desc="pyinstaller")
 
     # 清理中间 EXE
     stray = ROOT / "dist" / "ChargerLogApp.exe"
