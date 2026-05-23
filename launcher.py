@@ -56,6 +56,20 @@ def _heartbeat_monitor():
             os._exit(0)
 
 
+def _log(msg: str) -> None:
+    """写入诊断日志（仅 frozen 模式，输出到 exe 所在目录的 launcher.log）。"""
+    if not _is_frozen():
+        return
+    try:
+        exe_dir = Path(sys.executable).parent
+        log_path = exe_dir / "launcher.log"
+        ts = time.strftime("%Y-%m-%d %H:%M:%S")
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(f"[{ts}] {msg}\n")
+    except Exception:
+        pass
+
+
 def main():
     paths = _resolve_paths()
 
@@ -72,7 +86,18 @@ def main():
     from app import create_app
 
     static = paths['static']
-    app = create_app(static_folder=static if Path(static).exists() else None)
+    static_exists = Path(static).is_dir()
+    _log(f"static={static}  exists={static_exists}  frozen={_is_frozen()}")
+    if static_exists:
+        try:
+            children = list(Path(static).iterdir())
+            _log(f"static children: {[p.name for p in children[:20]]}")
+        except Exception as e:
+            _log(f"static list error: {e}")
+    _log(f"chargerlog_bin={paths['chargerlog_bin']}  exists={Path(paths['chargerlog_bin']).exists()}")
+    _log(f"history_dir={paths['history_dir']}")
+
+    app = create_app(static_folder=static if static_exists else None)
     app.config['_heartbeat_update'] = _update_heartbeat
 
     # 初始化心跳时间戳

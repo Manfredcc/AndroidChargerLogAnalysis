@@ -27,12 +27,17 @@ if str(_server_dir) not in sys.path:
 
 
 def create_app(static_folder: str = None) -> Flask:
-    app = Flask(__name__, static_folder=static_folder, static_url_path='' if static_folder else None)
+    """static_folder 仅用于手动 send_from_directory，不传给 Flask 构造函数。
+
+    避免 Flask 内置 static_url_path='' 注册的 /<path:filename> 路由
+    与显式路由产生跨版本/跨平台行为差异（表现为 jinja2 TemplateNotFound）。
+    """
+    app = Flask(__name__)
 
     # 允许跨域请求（前端独立部署时必需）
     CORS(app, resources={r"/api/*": {"origins": "*"}})
 
-    # ── 注册路由蓝图 ──────────────────────────────────────
+    # ── 注册 API 路由蓝图（优先匹配 /api/*）────────────────
     from routes.upload import upload_bp
     from routes.analysis import analysis_bp
     from routes.history import history_bp
@@ -40,6 +45,22 @@ def create_app(static_folder: str = None) -> Flask:
     app.register_blueprint(upload_bp)
     app.register_blueprint(analysis_bp)
     app.register_blueprint(history_bp)
+
+    # ── 心跳与关闭 ──────────────────────────────────────
+    @app.route("/api/heartbeat", methods=["POST"])
+    def heartbeat():
+        update = current_app.config.get('_heartbeat_update')
+        if update:
+            update()
+        return jsonify({"status": "ok"}), 200
+
+    @app.route("/api/shutdown", methods=["POST"])
+    def shutdown():
+        os._exit(0)
+
+    @app.route("/api/health")
+    def health():
+        return jsonify({"status": "ok"}), 200
 
     # ── 全局错误处理 ──────────────────────────────────────
     @app.errorhandler(404)
@@ -52,13 +73,17 @@ def create_app(static_folder: str = None) -> Flask:
     def internal_error(e):
         return jsonify({"error": "服务器内部错误"}), 500
 
-    # ── 根路径 ──────────────────────────────────────────
-    @app.route("/")
-    def index():
-        if static_folder:
+    # ── 前端静态文件（显式路由，不依赖 Flask built-in static）──
+    if static_folder and Path(static_folder).is_dir():
+        @app.route("/")
+        @app.route("/<path:filename>")
+        def serve_frontend(filename: str = "index.html"):
             from flask import send_from_directory
-            return send_from_directory(static_folder, "index.html")
-        return r"""<!DOCTYPE html>
+            return send_from_directory(static_folder, filename)
+    else:
+        @app.route("/")
+        def index():
+            return r"""<!DOCTYPE html>
 <html lang="zh">
 <head>
 <meta charset="utf-8">
@@ -194,23 +219,6 @@ loadHistory();
 </script>
 </body>
 </html>"""
-
-    # ── 心跳与关闭 ──────────────────────────────────────
-    @app.route("/api/heartbeat", methods=["POST"])
-    def heartbeat():
-        update = current_app.config.get('_heartbeat_update')
-        if update:
-            update()
-        return jsonify({"status": "ok"}), 200
-
-    @app.route("/api/shutdown", methods=["POST"])
-    def shutdown():
-        os._exit(0)
-
-    # ── 健康检查 ──────────────────────────────────────────
-    @app.route("/api/health")
-    def health():
-        return jsonify({"status": "ok"}), 200
 
     return app
 
