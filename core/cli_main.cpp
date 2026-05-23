@@ -1,4 +1,4 @@
-/// chargerlog CLI
+/// CLI 入口 — chargerlog 命令行可执行文件
 /// 用法: chargerlog <日志目录>
 ///
 /// 扫描目录下所有日志文件, 使用 HealthdParser 解析,

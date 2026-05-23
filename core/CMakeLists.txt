@@ -24,7 +24,7 @@ target_include_directories(chargerlog_core
 
 # ── CLI 可执行文件 ──────────────────────────────────────
 add_executable(chargerlog
-    ${PROJECT_SOURCE_DIR}/../cli/main.cpp
+    cli_main.cpp
 )
 target_link_libraries(chargerlog PRIVATE chargerlog_core)
 target_include_directories(chargerlog
