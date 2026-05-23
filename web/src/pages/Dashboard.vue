@@ -138,10 +138,11 @@ const cycleThResult = computed<ThresholdComputed | null>(() => {
 interface ChartDef {
   id: string
   title: string
-  type: 'combined' | 'current' | 'level' | 'cycle'
+  type: 'stats' | 'combined' | 'current' | 'level' | 'cycle'
   height: number
 }
 const chartOrder = ref<ChartDef[]>([
+  { id: 'stats',    title: '',              type: 'stats',    height: 0 },
   { id: 'combined', title: '电池电压 · 温度', type: 'combined', height: 300 },
   { id: 'current',  title: '电池电流',       type: 'current',  height: 240 },
   { id: 'level',    title: '电量',           type: 'level',    height: 240 },
@@ -217,6 +218,66 @@ function onDragEnd(e: DragEvent) {
   (e.target as HTMLElement).classList.remove('dragging')
   dragIdx = -1
 }
+
+interface Stats {
+  max: number
+  min: number
+  avg: number
+}
+
+function computeStats(points: DataPoint[], field: 'v' | 'tmp' | 'cur' | 'lvl' | 'cc'): Stats | null {
+  const values = points.map(p => p[field]).filter(v => v != null) as number[]
+  if (values.length === 0) return null
+  let max = values[0], min = values[0], sum = 0
+  for (const v of values) {
+    if (v > max) max = v
+    if (v < min) min = v
+    sum += v
+  }
+  return { max, min, avg: sum / values.length }
+}
+
+function fmtStat(val: number, decimals = 1): string {
+  return val.toFixed(decimals)
+}
+
+interface StatRow {
+  label: string
+  color: string
+  max: string
+  min: string
+  avg: string
+  unit: string
+}
+
+const statRows = computed<StatRow[]>(() => {
+  const r: StatRow[] = []
+  if (voltageStats.value) r.push({ label: '电压 (mV)', color: '#2563eb', max: fmtStat(voltageStats.value.max, 0), min: fmtStat(voltageStats.value.min, 0), avg: fmtStat(voltageStats.value.avg, 0), unit: 'mV' })
+  if (tempStats.value)    r.push({ label: '温度 (°C)', color: '#ef4444', max: fmtStat(tempStats.value.max, 1), min: fmtStat(tempStats.value.min, 1), avg: fmtStat(tempStats.value.avg, 1), unit: '°C' })
+  if (currentStats.value) r.push({ label: '电流 (mA)', color: '#22c55e', max: fmtStat(currentStats.value.max, 0), min: fmtStat(currentStats.value.min, 0), avg: fmtStat(currentStats.value.avg, 0), unit: 'mA' })
+  if (levelStats.value)   r.push({ label: '电量 (%)',  color: '#f59e0b', max: fmtStat(levelStats.value.max, 0), min: fmtStat(levelStats.value.min, 0), avg: fmtStat(levelStats.value.avg, 0), unit: '%' })
+  if (cycleStats.value)   r.push({ label: '剩余循环',  color: '#8b5cf6', max: fmtStat(cycleStats.value.max, 0), min: fmtStat(cycleStats.value.min, 0), avg: fmtStat(cycleStats.value.avg, 0), unit: '次' })
+  return r
+})
+
+const voltageStats  = computed(() => computeStats(filteredPoints.value, 'v'))
+const tempStats     = computed(() => computeStats(filteredPoints.value, 'tmp'))
+const currentStats  = computed(() => computeStats(filteredPoints.value, 'cur'))
+const levelStats    = computed(() => computeStats(filteredPoints.value, 'lvl'))
+const cycleStats    = computed(() => {
+  const pts = filteredPoints.value
+  if (!pts.length) return null
+  const total = ratedCycles.value
+  const values = pts.map(p => p.cc != null ? total - p.cc : null).filter(v => v != null) as number[]
+  if (values.length === 0) return null
+  let max = values[0], min = values[0], sum = 0
+  for (const v of values) {
+    if (v > max) max = v
+    if (v < min) min = v
+    sum += v
+  }
+  return { max, min, avg: sum / values.length }
+})
 
 function fmtMs(ms: number): string {
   const doy = Math.floor(ms / MS_PER_DAY)
@@ -469,6 +530,7 @@ const optionFns: Record<string, () => any> = {
 function initCharts() {
   disposeCharts()
   chartOrder.value.forEach(def => {
+    if (def.type === 'stats') return
     const el = chartRefs.value.get(def.id)
     if (!el) return
     const chart = echarts.init(el)
@@ -493,7 +555,9 @@ watch(levelThreshold, () => updateChart('level'))
 watch(cycleThreshold, () => updateChart('cycle'))
 
 watch([timeRangeMin, timeRangeMax], () => {
-  chartOrder.value.forEach(def => updateChart(def.id))
+  chartOrder.value.forEach(def => {
+    if (def.type !== 'stats') updateChart(def.id)
+  })
 })
 
 watch(chartOrder, async () => {
@@ -623,10 +687,39 @@ onUnmounted(() => {
           @drop="onDrop($event, idx)"
           @dragend="onDragEnd"
         >
+          <!-- stats: 汇总表 -->
+          <template v-if="def.type === 'stats'">
+            <div class="stats-card-inner" v-if="statRows.length">
+              <table class="stats-table">
+                <thead>
+                  <tr>
+                    <th>指标</th>
+                    <th>最大值</th>
+                    <th>最小值</th>
+                    <th>平均值</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="row in statRows" :key="row.label">
+                    <td><span class="stat-dot" :style="{ background: row.color }"></span>{{ row.label }}</td>
+                    <td class="val">{{ row.max }}</td>
+                    <td class="val">{{ row.min }}</td>
+                    <td class="val">{{ row.avg }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div v-else class="stats-empty">暂无统计数据</div>
+          </template>
+
           <!-- combined: 双 Y 轴图 -->
           <template v-if="def.type === 'combined'">
             <div class="chart-card-header">
               <h3>{{ def.title }}</h3>
+              <div class="stats-inline" v-if="(showVoltage && voltageStats) || (showTemp && tempStats)">
+                <span class="stat-item" v-if="showVoltage && voltageStats">电压 {{ fmtStat(voltageStats.max, 0) }}<span class="sl">max</span> {{ fmtStat(voltageStats.min, 0) }}<span class="sl">min</span> {{ fmtStat(voltageStats.avg, 0) }}<span class="sl">avg</span> <span class="su">mV</span></span>
+                <span class="stat-item" v-if="showTemp && tempStats">温度 {{ fmtStat(tempStats.max, 1) }}<span class="sl">max</span> {{ fmtStat(tempStats.min, 1) }}<span class="sl">min</span> {{ fmtStat(tempStats.avg, 1) }}<span class="sl">avg</span> <span class="su">°C</span></span>
+              </div>
               <div class="header-right">
                 <div class="thresholds-group">
                   <label class="th-label">
@@ -655,12 +748,17 @@ onUnmounted(() => {
           <template v-else-if="def.type === 'current'">
             <div class="chart-card-header">
               <h3>{{ def.title }} <span class="unit">(mA)</span></h3>
-              <label class="th-label">
-                阈值
-                <input type="number" class="th-input" :value="currentThreshold ?? ''" @input="currentThreshold = setTh($event)" placeholder="--" step="any" />
-                <span class="th-unit">mA</span>
-                <span v-if="currentThResult" class="th-stat">超 {{ currentThResult.abovePct.toFixed(1) }}% ({{ fmtDuration(currentThResult.aboveTimeMs) }})</span>
-              </label>
+              <div class="stats-inline" v-if="currentStats">
+                <span class="stat-item">电池电流 {{ fmtStat(currentStats.max, 0) }}<span class="sl">max</span> {{ fmtStat(currentStats.min, 0) }}<span class="sl">min</span> {{ fmtStat(currentStats.avg, 0) }}<span class="sl">avg</span> <span class="su">mA</span></span>
+              </div>
+              <div class="header-right">
+                <label class="th-label">
+                  阈值
+                  <input type="number" class="th-input" :value="currentThreshold ?? ''" @input="currentThreshold = setTh($event)" placeholder="--" step="any" />
+                  <span class="th-unit">mA</span>
+                  <span v-if="currentThResult" class="th-stat">超 {{ currentThResult.abovePct.toFixed(1) }}% ({{ fmtDuration(currentThResult.aboveTimeMs) }})</span>
+                </label>
+              </div>
             </div>
             <div :ref="el => { if (el) chartRefs.set('current', el as HTMLElement) }" :style="{ height: def.height + 'px' }" />
           </template>
@@ -669,12 +767,17 @@ onUnmounted(() => {
           <template v-else-if="def.type === 'level'">
             <div class="chart-card-header">
               <h3>{{ def.title }} <span class="unit">(%)</span></h3>
-              <label class="th-label">
-                阈值
-                <input type="number" class="th-input" :value="levelThreshold ?? ''" @input="levelThreshold = setTh($event)" placeholder="--" step="any" />
-                <span class="th-unit">%</span>
-                <span v-if="levelThResult" class="th-stat">超 {{ levelThResult.abovePct.toFixed(1) }}% ({{ fmtDuration(levelThResult.aboveTimeMs) }})</span>
-              </label>
+              <div class="stats-inline" v-if="levelStats">
+                <span class="stat-item">电量 {{ fmtStat(levelStats.max, 0) }}<span class="sl">max</span> {{ fmtStat(levelStats.min, 0) }}<span class="sl">min</span> {{ fmtStat(levelStats.avg, 0) }}<span class="sl">avg</span> <span class="su">%</span></span>
+              </div>
+              <div class="header-right">
+                <label class="th-label">
+                  阈值
+                  <input type="number" class="th-input" :value="levelThreshold ?? ''" @input="levelThreshold = setTh($event)" placeholder="--" step="any" />
+                  <span class="th-unit">%</span>
+                  <span v-if="levelThResult" class="th-stat">超 {{ levelThResult.abovePct.toFixed(1) }}% ({{ fmtDuration(levelThResult.aboveTimeMs) }})</span>
+                </label>
+              </div>
             </div>
             <div :ref="el => { if (el) chartRefs.set('level', el as HTMLElement) }" :style="{ height: def.height + 'px' }" />
           </template>
@@ -683,6 +786,9 @@ onUnmounted(() => {
           <template v-else-if="def.type === 'cycle'">
             <div class="chart-card-header">
               <h3>{{ def.title }}</h3>
+              <div class="stats-inline" v-if="cycleStats">
+                <span class="stat-item">剩余循环 {{ fmtStat(cycleStats.max, 0) }}<span class="sl">max</span> {{ fmtStat(cycleStats.min, 0) }}<span class="sl">min</span> {{ fmtStat(cycleStats.avg, 0) }}<span class="sl">avg</span> <span class="su">次</span></span>
+              </div>
               <div class="header-right">
                 <div class="rated-inline">
                   额定：<input
@@ -794,14 +900,43 @@ h2 { font-size: 18px; color: #1a1a1a; word-break: break-all; }
 .unit { color: #999; font-weight: 400; font-size: 12px; }
 
 .chart-card-header {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
   margin-bottom: 4px;
-  flex-wrap: wrap;
   gap: 4px;
 }
 .header-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+/* ── stats summary table ── */
+.stats-card-inner { padding: 0; }
+.stats-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.stats-table th {
+  color: #888; font-weight: 500; font-size: 11px;
+  padding: 4px 8px; border-bottom: 1px solid #eee; text-align: center;
+}
+.stats-table th:first-child { text-align: left; }
+.stats-table td {
+  padding: 5px 8px; border-bottom: 1px solid #f5f5f5; text-align: center; color: #333;
+}
+.stats-table td:first-child { text-align: left; color: #555; }
+.stats-table .val { font-family: monospace; font-weight: 500; }
+.stats-table tbody tr:last-child td { border-bottom: none; }
+.stat-dot {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  margin-right: 6px; vertical-align: middle;
+}
+.stats-empty { text-align: center; color: #bbb; padding: 16px 0; font-size: 13px; }
+
+/* ── stats inline ── */
+.stats-inline {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+}
+.stat-item { font-size: 12px; color: #555; white-space: nowrap; }
+.sl {
+  display: inline; font-size: 8px; color: #bbb; vertical-align: super;
+}
+.su { color: #aaa; font-size: 11px; margin-left: 2px; }
 
 /* ── toggle (checkbox) ── */
 .toggle-group { display: flex; align-items: center; gap: 10px; }

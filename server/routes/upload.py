@@ -1,5 +1,6 @@
 """POST /api/upload — 上传并分析日志目录。"""
 
+import ctypes
 import json
 import os
 import uuid
@@ -7,6 +8,16 @@ import tkinter as tk
 from datetime import datetime, timezone
 from pathlib import Path
 from tkinter import filedialog
+
+# 启用 DPI 感知，修复 Windows 高 DPI 下文件对话框模糊问题
+if os.name == "nt":
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)  # Per-Monitor DPI Aware
+    except Exception:
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+        except Exception:
+            pass
 
 from flask import Blueprint, request, jsonify, current_app
 
