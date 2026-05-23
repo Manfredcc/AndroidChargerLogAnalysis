@@ -7,6 +7,10 @@ import { CanvasRenderer } from 'echarts/renderers'
 import { TitleComponent, TooltipComponent, GridComponent, LegendComponent } from 'echarts/components'
 import { getAnalysis, type AnalysisResult, type DataPoint } from '../api'
 import { computeThreshold, fmtDuration, type ThresholdComputed } from '../utils/threshold'
+import { fmtMs, MS_PER_DAY } from '../utils/time'
+import TimeRangeSlider from '../components/TimeRangeSlider.vue'
+import StatsTable from '../components/StatsTable.vue'
+import ChartCard from '../components/ChartCard.vue'
 
 echarts.use([LineChart, CanvasRenderer, TitleComponent, TooltipComponent, GridComponent, LegendComponent])
 
@@ -23,26 +27,6 @@ const showTemp = ref(true)
 // ── 时间范围 ──────────────────────────────
 const timeRangeMin = ref(0)
 const timeRangeMax = ref(0)
-const timeRangeMinInput = ref('')
-const timeRangeMaxInput = ref('')
-
-// 每月 1 日前的累计天数 (非闰年)
-const DAYS_BEFORE = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365]
-const MS_PER_DAY = 86400000
-
-/** 将 MM-DD HH:MM:SS 解析为年内毫秒数 */
-function parseAbsTime(s: string): number {
-  const match = s.match(/^(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})$/)
-  if (!match) return -1
-  const month = Number(match[1])
-  const day = Number(match[2])
-  if (month < 1 || month > 12) return -1
-  const maxDay = DAYS_BEFORE[month] - DAYS_BEFORE[month - 1]
-  if (day < 1 || day > maxDay) return -1
-  const doy = DAYS_BEFORE[month - 1] + (day - 1)
-  const tod = Number(match[3]) * 3600000 + Number(match[4]) * 60000 + Number(match[5]) * 1000
-  return doy * MS_PER_DAY + tod
-}
 
 const validPoints = computed(() => {
   if (!data.value) return []
@@ -66,45 +50,11 @@ const filteredPoints = computed(() => {
 function resetAll() {
   timeRangeMin.value = dataMinT.value
   timeRangeMax.value = dataMaxT.value
-  timeRangeMinInput.value = fmtMs(dataMinT.value)
-  timeRangeMaxInput.value = fmtMs(dataMaxT.value)
   voltageThreshold.value = null
   tempThreshold.value = null
   currentThreshold.value = null
   levelThreshold.value = null
   cycleThreshold.value = null
-}
-
-function onSliderMinInput() {
-  if (timeRangeMin.value >= timeRangeMax.value) {
-    timeRangeMin.value = timeRangeMax.value - 1000
-  }
-  timeRangeMinInput.value = fmtMs(timeRangeMin.value)
-}
-
-function onSliderMaxInput() {
-  if (timeRangeMax.value <= timeRangeMin.value) {
-    timeRangeMax.value = timeRangeMin.value + 1000
-  }
-  timeRangeMaxInput.value = fmtMs(timeRangeMax.value)
-}
-
-function onMinInputChange() {
-  const ms = parseAbsTime(timeRangeMinInput.value)
-  if (ms >= 0 && ms < timeRangeMax.value && ms >= dataMinT.value) {
-    timeRangeMin.value = ms
-  } else {
-    timeRangeMinInput.value = fmtMs(timeRangeMin.value)
-  }
-}
-
-function onMaxInputChange() {
-  const ms = parseAbsTime(timeRangeMaxInput.value)
-  if (ms > timeRangeMin.value && ms <= dataMaxT.value) {
-    timeRangeMax.value = ms
-  } else {
-    timeRangeMaxInput.value = fmtMs(timeRangeMax.value)
-  }
 }
 
 // ── 阈值 refs ──────────────────────────────
@@ -164,7 +114,7 @@ function hexToRgba(hex: string, a: number): string {
   return `rgba(${r},${g},${b},${a})`
 }
 
-/** 应用阈值样式：把主系列改成半透明背景，叠加上方全不透明段 */
+/** 应用阈值样式：主系列半透明，上方覆盖加粗段 */
 function applyThreshold(
   mainSeries: any,
   pairs: [number, number | null][],
@@ -172,14 +122,12 @@ function applyThreshold(
   color: string,
   yAxisIndex?: number,
 ) {
-  // 主系列 → 半透明
   mainSeries.lineStyle = { color: hexToRgba(color, 0.25), width: 2 }
   mainSeries.itemStyle = { color: hexToRgba(color, 0.25) }
   mainSeries.areaStyle = {
     color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
       colorStops: [{ offset: 0, color: hexToRgba(color, 0.08) }, { offset: 1, color: hexToRgba(color, 0.02) }] },
   }
-  // 上方覆盖层 → 加粗
   return {
     type: 'line' as const,
     data: pairs.map(([t, v]) => v != null && v >= threshold ? [t, v] : [t, null]),
@@ -196,16 +144,10 @@ function applyThreshold(
 
 // ── 拖拽排序 ──────────────────────────────
 let dragIdx = -1
-function onDragStart(e: DragEvent, idx: number) {
-  dragIdx = idx
-  const el = e.target as HTMLElement
-  el.classList.add('dragging')
-  e.dataTransfer!.effectAllowed = 'move'
-}
+function onDragStart(_e: DragEvent, idx: number) { dragIdx = idx }
 function onDragOver(e: DragEvent, idx: number) {
   e.preventDefault()
-  if (idx === dragIdx) return
-  e.dataTransfer!.dropEffect = 'move'
+  if (idx !== dragIdx) (e.dataTransfer!).dropEffect = 'move'
 }
 function onDrop(_e: DragEvent, idx: number) {
   if (idx === dragIdx || dragIdx < 0) return
@@ -214,11 +156,9 @@ function onDrop(_e: DragEvent, idx: number) {
   items.splice(idx, 0, moved)
   chartOrder.value = items
 }
-function onDragEnd(e: DragEvent) {
-  (e.target as HTMLElement).classList.remove('dragging')
-  dragIdx = -1
-}
+function onDragEnd() { dragIdx = -1 }
 
+// ── 统计 ──────────────────────────────
 interface Stats {
   max: number
   min: number
@@ -279,19 +219,7 @@ const cycleStats    = computed(() => {
   return { max, min, avg: sum / values.length }
 })
 
-function fmtMs(ms: number): string {
-  const doy = Math.floor(ms / MS_PER_DAY)
-  const tod = ms % MS_PER_DAY
-  let month = 12
-  for (let m = 1; m <= 12; m++) {
-    if (doy < DAYS_BEFORE[m]) { month = m; break }
-  }
-  const day = doy - DAYS_BEFORE[month - 1] + 1
-  const h = Math.floor(tod / 3600000)
-  const m = Math.floor((tod % 3600000) / 60000)
-  const s = Math.floor((tod % 60000) / 1000)
-  return `${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')} ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-}
+// ── ECharts options ──────────────────────────────
 
 function combinedOption() {
   if (!data.value || !filteredPoints.value.length) return {}
@@ -587,8 +515,6 @@ onMounted(async () => {
     if (data.value && validPoints.value.length > 0) {
       timeRangeMin.value = dataMinT.value
       timeRangeMax.value = dataMaxT.value
-      timeRangeMinInput.value = fmtMs(dataMinT.value)
-      timeRangeMaxInput.value = fmtMs(dataMaxT.value)
     }
     await nextTick()
     initCharts()
@@ -627,189 +553,145 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <div class="time-range-bar" v-if="data.points.length && dataMaxT > dataMinT">
-        <div class="time-range-header">
-          <span class="time-label">时间范围</span>
-          <span class="time-value">{{ fmtMs(timeRangeMin) }} ~ {{ fmtMs(timeRangeMax) }}</span>
-          <span class="time-dur">({{ fmtDuration(timeRangeMax - timeRangeMin) }})</span>
-          <button class="btn-reset" @click="resetAll">重置全部参数</button>
-        </div>
-        <div class="time-range-controls">
-          <input
-            class="time-input time-input-left"
-            :value="timeRangeMinInput"
-            placeholder="MM-DD HH:MM:SS"
-            @change="onMinInputChange"
-            @input="timeRangeMinInput = ($event.target as HTMLInputElement).value"
-          />
-          <div class="range-slider">
-            <input
-              type="range"
-              class="range-thumb range-thumb-min"
-              :min="dataMinT"
-              :max="dataMaxT"
-              step="1000"
-              :value="timeRangeMin"
-              @input="timeRangeMin = Number(($event.target as HTMLInputElement).value); onSliderMinInput()"
-            />
-            <input
-              type="range"
-              class="range-thumb range-thumb-max"
-              :min="dataMinT"
-              :max="dataMaxT"
-              step="1000"
-              :value="timeRangeMax"
-              @input="timeRangeMax = Number(($event.target as HTMLInputElement).value); onSliderMaxInput()"
-            />
-          </div>
-          <input
-            class="time-input time-input-right"
-            :value="timeRangeMaxInput"
-            placeholder="MM-DD HH:MM:SS"
-            @change="onMaxInputChange"
-            @input="timeRangeMaxInput = ($event.target as HTMLInputElement).value"
-          />
-        </div>
-        <div class="time-range-labels">
-          <span>{{ fmtMs(dataMinT) }}</span>
-          <span>{{ fmtMs(dataMaxT) }}</span>
-        </div>
-      </div>
+      <TimeRangeSlider
+        v-if="data.points.length"
+        v-model:model-min="timeRangeMin"
+        v-model:model-max="timeRangeMax"
+        :data-min-t="dataMinT"
+        :data-max-t="dataMaxT"
+        @reset="resetAll"
+      />
 
       <div class="charts" v-if="data.points.length">
-        <div
-          class="chart-card"
-          v-for="(def, idx) in chartOrder"
-          :key="def.id"
-          draggable="true"
-          @dragstart="onDragStart($event, idx)"
-          @dragover="onDragOver($event, idx)"
-          @drop="onDrop($event, idx)"
-          @dragend="onDragEnd"
-        >
+        <template v-for="(def, idx) in chartOrder" :key="def.id">
           <!-- stats: 汇总表 -->
-          <template v-if="def.type === 'stats'">
-            <div class="stats-card-inner" v-if="statRows.length">
-              <table class="stats-table">
-                <thead>
-                  <tr>
-                    <th>指标</th>
-                    <th>最大值</th>
-                    <th>最小值</th>
-                    <th>平均值</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="row in statRows" :key="row.label">
-                    <td><span class="stat-dot" :style="{ background: row.color }"></span>{{ row.label }}</td>
-                    <td class="val">{{ row.max }}</td>
-                    <td class="val">{{ row.min }}</td>
-                    <td class="val">{{ row.avg }}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <div v-else class="stats-empty">暂无统计数据</div>
-          </template>
+          <ChartCard
+            v-if="def.type === 'stats'"
+            no-header
+            @dragstart="onDragStart($event, idx)"
+            @dragover="onDragOver($event, idx)"
+            @drop="onDrop($event, idx)"
+            @dragend="onDragEnd"
+          >
+            <StatsTable :rows="statRows" />
+          </ChartCard>
 
           <!-- combined: 双 Y 轴图 -->
-          <template v-if="def.type === 'combined'">
-            <div class="chart-card-header">
-              <h3>{{ def.title }}</h3>
-              <div class="stats-inline" v-if="(showVoltage && voltageStats) || (showTemp && tempStats)">
+          <ChartCard
+            v-else-if="def.type === 'combined'"
+            @dragstart="onDragStart($event, idx)"
+            @dragover="onDragOver($event, idx)"
+            @drop="onDrop($event, idx)"
+            @dragend="onDragEnd"
+          >
+            <template #header-center>
+              <template v-if="(showVoltage && voltageStats) || (showTemp && tempStats)">
                 <span class="stat-item" v-if="showVoltage && voltageStats">电压 {{ fmtStat(voltageStats.max, 0) }}<span class="sl">max</span> {{ fmtStat(voltageStats.min, 0) }}<span class="sl">min</span> {{ fmtStat(voltageStats.avg, 0) }}<span class="sl">avg</span> <span class="su">mV</span></span>
                 <span class="stat-item" v-if="showTemp && tempStats">温度 {{ fmtStat(tempStats.max, 1) }}<span class="sl">max</span> {{ fmtStat(tempStats.min, 1) }}<span class="sl">min</span> {{ fmtStat(tempStats.avg, 1) }}<span class="sl">avg</span> <span class="su">°C</span></span>
+              </template>
+            </template>
+            <template #header-right>
+              <div class="thresholds-group">
+                <label class="th-label">
+                  电压阈值
+                  <input type="number" class="th-input" :value="voltageThreshold ?? ''" @input="voltageThreshold = setTh($event)" placeholder="--" step="any" />
+                  <span class="th-unit">mV</span>
+                  <span v-if="voltageThResult" class="th-stat">超 {{ voltageThResult.abovePct.toFixed(1) }}% ({{ fmtDuration(voltageThResult.aboveTimeMs) }})</span>
+                </label>
+                <label class="th-label">
+                  温度阈值
+                  <input type="number" class="th-input" :value="tempThreshold ?? ''" @input="tempThreshold = setTh($event)" placeholder="--" step="any" />
+                  <span class="th-unit">°C</span>
+                  <span v-if="tempThResult" class="th-stat">超 {{ tempThResult.abovePct.toFixed(1) }}% ({{ fmtDuration(tempThResult.aboveTimeMs) }})</span>
+                </label>
               </div>
-              <div class="header-right">
-                <div class="thresholds-group">
-                  <label class="th-label">
-                    电压阈值
-                    <input type="number" class="th-input" :value="voltageThreshold ?? ''" @input="voltageThreshold = setTh($event)" placeholder="--" step="any" />
-                    <span class="th-unit">mV</span>
-                    <span v-if="voltageThResult" class="th-stat">超 {{ voltageThResult.abovePct.toFixed(1) }}% ({{ fmtDuration(voltageThResult.aboveTimeMs) }})</span>
-                  </label>
-                  <label class="th-label">
-                    温度阈值
-                    <input type="number" class="th-input" :value="tempThreshold ?? ''" @input="tempThreshold = setTh($event)" placeholder="--" step="any" />
-                    <span class="th-unit">°C</span>
-                    <span v-if="tempThResult" class="th-stat">超 {{ tempThResult.abovePct.toFixed(1) }}% ({{ fmtDuration(tempThResult.aboveTimeMs) }})</span>
-                  </label>
-                </div>
-                <div class="toggle-group">
-                  <label class="toggle-label"><input type="checkbox" v-model="showVoltage" /><span>电压</span></label>
-                  <label class="toggle-label"><input type="checkbox" v-model="showTemp" /><span>温度</span></label>
-                </div>
+              <div class="toggle-group">
+                <label class="toggle-label"><input type="checkbox" v-model="showVoltage" /><span>电压</span></label>
+                <label class="toggle-label"><input type="checkbox" v-model="showTemp" /><span>温度</span></label>
               </div>
-            </div>
-            <div :ref="el => { if (el) chartRefs.set('combined', el as HTMLElement) }" :style="{ height: def.height + 'px' }" />
-          </template>
+            </template>
+            <template #title>电池电压 · 温度</template>
+            <div :ref="el => { if (el) chartRefs.set('combined', el as HTMLElement) }" :style="{ height: '300px' }" />
+          </ChartCard>
 
           <!-- current: 电流图 -->
-          <template v-else-if="def.type === 'current'">
-            <div class="chart-card-header">
-              <h3>{{ def.title }} <span class="unit">(mA)</span></h3>
-              <div class="stats-inline" v-if="currentStats">
-                <span class="stat-item">电池电流 {{ fmtStat(currentStats.max, 0) }}<span class="sl">max</span> {{ fmtStat(currentStats.min, 0) }}<span class="sl">min</span> {{ fmtStat(currentStats.avg, 0) }}<span class="sl">avg</span> <span class="su">mA</span></span>
-              </div>
-              <div class="header-right">
-                <label class="th-label">
-                  阈值
-                  <input type="number" class="th-input" :value="currentThreshold ?? ''" @input="currentThreshold = setTh($event)" placeholder="--" step="any" />
-                  <span class="th-unit">mA</span>
-                  <span v-if="currentThResult" class="th-stat">超 {{ currentThResult.abovePct.toFixed(1) }}% ({{ fmtDuration(currentThResult.aboveTimeMs) }})</span>
-                </label>
-              </div>
-            </div>
-            <div :ref="el => { if (el) chartRefs.set('current', el as HTMLElement) }" :style="{ height: def.height + 'px' }" />
-          </template>
+          <ChartCard
+            v-else-if="def.type === 'current'"
+            @dragstart="onDragStart($event, idx)"
+            @dragover="onDragOver($event, idx)"
+            @drop="onDrop($event, idx)"
+            @dragend="onDragEnd"
+          >
+            <template #header-center>
+              <span class="stat-item" v-if="currentStats">电池电流 {{ fmtStat(currentStats.max, 0) }}<span class="sl">max</span> {{ fmtStat(currentStats.min, 0) }}<span class="sl">min</span> {{ fmtStat(currentStats.avg, 0) }}<span class="sl">avg</span> <span class="su">mA</span></span>
+            </template>
+            <template #header-right>
+              <label class="th-label">
+                阈值
+                <input type="number" class="th-input" :value="currentThreshold ?? ''" @input="currentThreshold = setTh($event)" placeholder="--" step="any" />
+                <span class="th-unit">mA</span>
+                <span v-if="currentThResult" class="th-stat">超 {{ currentThResult.abovePct.toFixed(1) }}% ({{ fmtDuration(currentThResult.aboveTimeMs) }})</span>
+              </label>
+            </template>
+            <template #title>电池电流 <span class="unit">(mA)</span></template>
+            <div :ref="el => { if (el) chartRefs.set('current', el as HTMLElement) }" :style="{ height: '240px' }" />
+          </ChartCard>
 
           <!-- level: 电量图 -->
-          <template v-else-if="def.type === 'level'">
-            <div class="chart-card-header">
-              <h3>{{ def.title }} <span class="unit">(%)</span></h3>
-              <div class="stats-inline" v-if="levelStats">
-                <span class="stat-item">电量 {{ fmtStat(levelStats.max, 0) }}<span class="sl">max</span> {{ fmtStat(levelStats.min, 0) }}<span class="sl">min</span> {{ fmtStat(levelStats.avg, 0) }}<span class="sl">avg</span> <span class="su">%</span></span>
-              </div>
-              <div class="header-right">
-                <label class="th-label">
-                  阈值
-                  <input type="number" class="th-input" :value="levelThreshold ?? ''" @input="levelThreshold = setTh($event)" placeholder="--" step="any" />
-                  <span class="th-unit">%</span>
-                  <span v-if="levelThResult" class="th-stat">超 {{ levelThResult.abovePct.toFixed(1) }}% ({{ fmtDuration(levelThResult.aboveTimeMs) }})</span>
-                </label>
-              </div>
-            </div>
-            <div :ref="el => { if (el) chartRefs.set('level', el as HTMLElement) }" :style="{ height: def.height + 'px' }" />
-          </template>
+          <ChartCard
+            v-else-if="def.type === 'level'"
+            @dragstart="onDragStart($event, idx)"
+            @dragover="onDragOver($event, idx)"
+            @drop="onDrop($event, idx)"
+            @dragend="onDragEnd"
+          >
+            <template #header-center>
+              <span class="stat-item" v-if="levelStats">电量 {{ fmtStat(levelStats.max, 0) }}<span class="sl">max</span> {{ fmtStat(levelStats.min, 0) }}<span class="sl">min</span> {{ fmtStat(levelStats.avg, 0) }}<span class="sl">avg</span> <span class="su">%</span></span>
+            </template>
+            <template #header-right>
+              <label class="th-label">
+                阈值
+                <input type="number" class="th-input" :value="levelThreshold ?? ''" @input="levelThreshold = setTh($event)" placeholder="--" step="any" />
+                <span class="th-unit">%</span>
+                <span v-if="levelThResult" class="th-stat">超 {{ levelThResult.abovePct.toFixed(1) }}% ({{ fmtDuration(levelThResult.aboveTimeMs) }})</span>
+              </label>
+            </template>
+            <template #title>电量 <span class="unit">(%)</span></template>
+            <div :ref="el => { if (el) chartRefs.set('level', el as HTMLElement) }" :style="{ height: '240px' }" />
+          </ChartCard>
 
           <!-- cycle: 剩余循环图 + 额定输入 -->
-          <template v-else-if="def.type === 'cycle'">
-            <div class="chart-card-header">
-              <h3>{{ def.title }}</h3>
-              <div class="stats-inline" v-if="cycleStats">
-                <span class="stat-item">剩余循环 {{ fmtStat(cycleStats.max, 0) }}<span class="sl">max</span> {{ fmtStat(cycleStats.min, 0) }}<span class="sl">min</span> {{ fmtStat(cycleStats.avg, 0) }}<span class="sl">avg</span> <span class="su">次</span></span>
+          <ChartCard
+            v-else-if="def.type === 'cycle'"
+            @dragstart="onDragStart($event, idx)"
+            @dragover="onDragOver($event, idx)"
+            @drop="onDrop($event, idx)"
+            @dragend="onDragEnd"
+          >
+            <template #header-center>
+              <span class="stat-item" v-if="cycleStats">剩余循环 {{ fmtStat(cycleStats.max, 0) }}<span class="sl">max</span> {{ fmtStat(cycleStats.min, 0) }}<span class="sl">min</span> {{ fmtStat(cycleStats.avg, 0) }}<span class="sl">avg</span> <span class="su">次</span></span>
+            </template>
+            <template #header-right>
+              <div class="rated-inline">
+                额定：<input
+                  type="number"
+                  class="rated-input"
+                  :value="ratedCycles"
+                  @input="ratedCycles = Number(($event.target as HTMLInputElement).value) || 0"
+                  min="0"
+                /> 次
               </div>
-              <div class="header-right">
-                <div class="rated-inline">
-                  额定：<input
-                    type="number"
-                    class="rated-input"
-                    :value="ratedCycles"
-                    @input="ratedCycles = Number(($event.target as HTMLInputElement).value) || 0"
-                    min="0"
-                  /> 次
-                </div>
-                <label class="th-label">
-                  阈值
-                  <input type="number" class="th-input" :value="cycleThreshold ?? ''" @input="cycleThreshold = setTh($event)" placeholder="--" step="any" />
-                  <span class="th-unit">次</span>
-                  <span v-if="cycleThResult" class="th-stat">超 {{ cycleThResult.abovePct.toFixed(1) }}% ({{ fmtDuration(cycleThResult.aboveTimeMs) }})</span>
-                </label>
-              </div>
-            </div>
-            <div :ref="el => { if (el) chartRefs.set('cycle', el as HTMLElement) }" :style="{ height: def.height + 'px' }" />
-          </template>
-        </div>
+              <label class="th-label">
+                阈值
+                <input type="number" class="th-input" :value="cycleThreshold ?? ''" @input="cycleThreshold = setTh($event)" placeholder="--" step="any" />
+                <span class="th-unit">次</span>
+                <span v-if="cycleThResult" class="th-stat">超 {{ cycleThResult.abovePct.toFixed(1) }}% ({{ fmtDuration(cycleThResult.aboveTimeMs) }})</span>
+              </label>
+            </template>
+            <template #title>剩余循环次数</template>
+            <div :ref="el => { if (el) chartRefs.set('cycle', el as HTMLElement) }" :style="{ height: '240px' }" />
+          </ChartCard>
+        </template>
       </div>
       <div class="empty" v-else-if="!error">
         暂无数据点。请确认日志目录中包含 healthd 数据。
@@ -825,113 +707,12 @@ onUnmounted(() => {
 .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
 h2 { font-size: 18px; color: #1a1a1a; word-break: break-all; }
 .meta { color: #888; font-size: 13px; margin-top: 4px; }
-/* ── Time Range Slider ── */
-.time-range-bar {
-  background: #fff; border-radius: 8px; padding: 16px 20px;
-  margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.08);
-}
-.time-range-header {
-  display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
-}
-.time-label { font-size: 13px; color: #666; font-weight: 500; }
-.time-value { font-size: 14px; color: #1a1a1a; font-weight: 600; font-family: monospace; }
-.time-dur { font-size: 12px; color: #999; }
-.btn-reset {
-  margin-left: auto; padding: 2px 12px; border: 1px solid #ddd;
-  border-radius: 4px; background: #fff; font-size: 12px; color: #666; cursor: pointer;
-}
-.btn-reset:hover { border-color: #2563eb; color: #2563eb; }
-
-.time-range-controls {
-  display: flex; align-items: center; gap: 10px;
-}
-.time-input {
-  width: 130px; padding: 4px 6px; border: 1px solid #ddd; border-radius: 4px;
-  font-size: 12px; font-family: monospace; text-align: center; color: #333;
-}
-.time-input:focus { outline: none; border-color: #2563eb; }
-
-.range-slider {
-  position: relative; flex: 1; height: 28px;
-}
-.range-slider input[type="range"] {
-  position: absolute; top: 0; left: 0; width: 100%; height: 28px;
-  margin: 0; padding: 0;
-  -webkit-appearance: none; appearance: none; background: transparent;
-  pointer-events: none;
-}
-.range-thumb-min { z-index: 1; }
-.range-thumb-max { z-index: 2; }
-/* 只有底层 (min) 显示灰色轨道，上层 (max) 轨道透明 */
-.range-thumb-min::-webkit-slider-runnable-track {
-  height: 4px; background: #e0e0e0; border-radius: 2px;
-}
-.range-thumb-max::-webkit-slider-runnable-track {
-  height: 4px; background: transparent;
-}
-.range-slider input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none; appearance: none;
-  width: 16px; height: 16px; border-radius: 50%;
-  background: #2563eb; border: 2px solid #fff;
-  box-shadow: 0 1px 3px rgba(0,0,0,.2);
-  cursor: pointer; pointer-events: auto; margin-top: -6px;
-}
-.range-thumb-min::-moz-range-track {
-  height: 4px; background: #e0e0e0; border-radius: 2px;
-}
-.range-thumb-max::-moz-range-track {
-  height: 4px; background: transparent;
-}
-.range-slider input[type="range"]::-moz-range-thumb {
-  width: 16px; height: 16px; border-radius: 50%;
-  background: #2563eb; border: 2px solid #fff;
-  box-shadow: 0 1px 3px rgba(0,0,0,.2);
-  cursor: pointer; pointer-events: auto;
-}
-
-.time-range-labels {
-  display: flex; justify-content: space-between; margin-top: 4px;
-  font-size: 11px; color: #bbb; font-family: monospace;
-}
 
 .charts { display: flex; flex-direction: column; gap: 16px; }
-.chart-card { background: #fff; border-radius: 8px; padding: 16px 20px 8px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-.chart-card h3 { font-size: 14px; margin: 0; color: #333; }
+
 .unit { color: #999; font-weight: 400; font-size: 12px; }
 
-.chart-card-header {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  margin-bottom: 4px;
-  gap: 4px;
-}
-.header-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-
-/* ── stats summary table ── */
-.stats-card-inner { padding: 0; }
-.stats-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.stats-table th {
-  color: #888; font-weight: 500; font-size: 11px;
-  padding: 4px 8px; border-bottom: 1px solid #eee; text-align: center;
-}
-.stats-table th:first-child { text-align: left; }
-.stats-table td {
-  padding: 5px 8px; border-bottom: 1px solid #f5f5f5; text-align: center; color: #333;
-}
-.stats-table td:first-child { text-align: left; color: #555; }
-.stats-table .val { font-family: monospace; font-weight: 500; }
-.stats-table tbody tr:last-child td { border-bottom: none; }
-.stat-dot {
-  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
-  margin-right: 6px; vertical-align: middle;
-}
-.stats-empty { text-align: center; color: #bbb; padding: 16px 0; font-size: 13px; }
-
 /* ── stats inline ── */
-.stats-inline {
-  display: flex; align-items: center; justify-content: center; gap: 10px;
-}
 .stat-item { font-size: 12px; color: #555; white-space: nowrap; }
 .sl {
   display: inline; font-size: 8px; color: #bbb; vertical-align: super;
@@ -974,9 +755,5 @@ h2 { font-size: 18px; color: #1a1a1a; word-break: break-all; }
 }
 .rated-input:focus { outline: none; border-color: #8b5cf6; }
 
-/* ── drag ── */
-.chart-card[draggable] { cursor: grab; }
-.chart-card[draggable]:active { cursor: grabbing; }
-.chart-card.dragging { opacity: 0.4; }
 .empty { text-align: center; color: #999; padding: 60px 0; }
 </style>
