@@ -95,7 +95,6 @@ loadHistory()
   <div class="upload-page">
     <div class="card">
       <h2>新建分析</h2>
-      <label>日志路径</label>
       <div class="path-row">
         <input v-model="logDir" placeholder="日志目录路径或压缩包路径 (支持 .zip, .tar.gz 等)"
                @keyup.enter="doUpload" />

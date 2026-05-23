@@ -576,41 +576,42 @@ onUnmounted(() => {
             <StatsTable :rows="statRows" />
           </ChartCard>
 
-          <!-- combined: 双 Y 轴图 -->
+          <!-- combined: 双 Y 轴图 (每指标独立一行: 勾选 + 统计 + 阈值) -->
           <ChartCard
             v-else-if="def.type === 'combined'"
+            no-header
             @dragstart="onDragStart($event, idx)"
             @dragover="onDragOver($event, idx)"
             @drop="onDrop($event, idx)"
             @dragend="onDragEnd"
           >
-            <template #header-center>
-              <template v-if="(showVoltage && voltageStats) || (showTemp && tempStats)">
-                <span class="stat-item" v-if="showVoltage && voltageStats">电压 {{ fmtStat(voltageStats.max, 0) }}<span class="sl">max</span> {{ fmtStat(voltageStats.min, 0) }}<span class="sl">min</span> {{ fmtStat(voltageStats.avg, 0) }}<span class="sl">avg</span> <span class="su">mV</span></span>
-                <span class="stat-item" v-if="showTemp && tempStats">温度 {{ fmtStat(tempStats.max, 1) }}<span class="sl">max</span> {{ fmtStat(tempStats.min, 1) }}<span class="sl">min</span> {{ fmtStat(tempStats.avg, 1) }}<span class="sl">avg</span> <span class="su">°C</span></span>
-              </template>
-            </template>
-            <template #header-right>
-              <div class="thresholds-group">
-                <label class="th-label">
-                  电压阈值
-                  <input type="number" class="th-input" :value="voltageThreshold ?? ''" @input="voltageThreshold = setTh($event)" placeholder="--" step="any" />
-                  <span class="th-unit">mV</span>
-                  <span v-if="voltageThResult" class="th-stat">超 {{ voltageThResult.abovePct.toFixed(1) }}% ({{ fmtDuration(voltageThResult.aboveTimeMs) }})</span>
-                </label>
-                <label class="th-label">
-                  温度阈值
-                  <input type="number" class="th-input" :value="tempThreshold ?? ''" @input="tempThreshold = setTh($event)" placeholder="--" step="any" />
-                  <span class="th-unit">°C</span>
-                  <span v-if="tempThResult" class="th-stat">超 {{ tempThResult.abovePct.toFixed(1) }}% ({{ fmtDuration(tempThResult.aboveTimeMs) }})</span>
-                </label>
+            <div class="combined-header">
+              <h3>电池电压 · 温度</h3>
+              <div class="combined-rows">
+                <!-- 电压行 -->
+                <div class="combined-row">
+                  <span class="stat-item" v-if="voltageStats">电压 {{ fmtStat(voltageStats.max, 0) }}<span class="sl">max</span> {{ fmtStat(voltageStats.min, 0) }}<span class="sl">min</span> {{ fmtStat(voltageStats.avg, 0) }}<span class="sl">avg</span> <span class="su">mV</span></span>
+                  <label class="th-label">
+                    阈值
+                    <input type="number" class="th-input" :value="voltageThreshold ?? ''" @input="voltageThreshold = setTh($event)" placeholder="--" step="any" />
+                    <span class="th-unit">mV</span>
+                    <span v-if="voltageThResult" class="th-stat">{{ voltageThResult.abovePct.toFixed(1) }}% ({{ fmtDuration(voltageThResult.aboveTimeMs) }})</span>
+                  </label>
+                  <label class="toggle-label"><input type="checkbox" v-model="showVoltage" /><span>电压</span></label>
+                </div>
+                <!-- 温度行 -->
+                <div class="combined-row">
+                  <span class="stat-item" v-if="tempStats">温度 {{ fmtStat(tempStats.max, 1) }}<span class="sl">max</span> {{ fmtStat(tempStats.min, 1) }}<span class="sl">min</span> {{ fmtStat(tempStats.avg, 1) }}<span class="sl">avg</span> <span class="su">°C</span></span>
+                  <label class="th-label">
+                    阈值
+                    <input type="number" class="th-input" :value="tempThreshold ?? ''" @input="tempThreshold = setTh($event)" placeholder="--" step="any" />
+                    <span class="th-unit">°C</span>
+                    <span v-if="tempThResult" class="th-stat">{{ tempThResult.abovePct.toFixed(1) }}% ({{ fmtDuration(tempThResult.aboveTimeMs) }})</span>
+                  </label>
+                  <label class="toggle-label"><input type="checkbox" v-model="showTemp" /><span>温度</span></label>
+                </div>
               </div>
-              <div class="toggle-group">
-                <label class="toggle-label"><input type="checkbox" v-model="showVoltage" /><span>电压</span></label>
-                <label class="toggle-label"><input type="checkbox" v-model="showTemp" /><span>温度</span></label>
-              </div>
-            </template>
-            <template #title>电池电压 · 温度</template>
+            </div>
             <div :ref="el => { if (el) chartRefs.set('combined', el as HTMLElement) }" :style="{ height: '300px' }" />
           </ChartCard>
 
@@ -630,7 +631,7 @@ onUnmounted(() => {
                 阈值
                 <input type="number" class="th-input" :value="currentThreshold ?? ''" @input="currentThreshold = setTh($event)" placeholder="--" step="any" />
                 <span class="th-unit">mA</span>
-                <span v-if="currentThResult" class="th-stat">超 {{ currentThResult.abovePct.toFixed(1) }}% ({{ fmtDuration(currentThResult.aboveTimeMs) }})</span>
+                <span v-if="currentThResult" class="th-stat">{{ currentThResult.abovePct.toFixed(1) }}% ({{ fmtDuration(currentThResult.aboveTimeMs) }})</span>
               </label>
             </template>
             <template #title>电池电流 <span class="unit">(mA)</span></template>
@@ -653,7 +654,7 @@ onUnmounted(() => {
                 阈值
                 <input type="number" class="th-input" :value="levelThreshold ?? ''" @input="levelThreshold = setTh($event)" placeholder="--" step="any" />
                 <span class="th-unit">%</span>
-                <span v-if="levelThResult" class="th-stat">超 {{ levelThResult.abovePct.toFixed(1) }}% ({{ fmtDuration(levelThResult.aboveTimeMs) }})</span>
+                <span v-if="levelThResult" class="th-stat">{{ levelThResult.abovePct.toFixed(1) }}% ({{ fmtDuration(levelThResult.aboveTimeMs) }})</span>
               </label>
             </template>
             <template #title>电量 <span class="unit">(%)</span></template>
@@ -685,7 +686,7 @@ onUnmounted(() => {
                 阈值
                 <input type="number" class="th-input" :value="cycleThreshold ?? ''" @input="cycleThreshold = setTh($event)" placeholder="--" step="any" />
                 <span class="th-unit">次</span>
-                <span v-if="cycleThResult" class="th-stat">超 {{ cycleThResult.abovePct.toFixed(1) }}% ({{ fmtDuration(cycleThResult.aboveTimeMs) }})</span>
+                <span v-if="cycleThResult" class="th-stat">{{ cycleThResult.abovePct.toFixed(1) }}% ({{ fmtDuration(cycleThResult.aboveTimeMs) }})</span>
               </label>
             </template>
             <template #title>剩余循环次数</template>
@@ -718,6 +719,32 @@ h2 { font-size: 18px; color: #1a1a1a; word-break: break-all; }
   display: inline; font-size: 8px; color: #bbb; vertical-align: super;
 }
 .su { color: #aaa; font-size: 11px; margin-left: 2px; }
+
+/* ── combined chart two-row header ── */
+.combined-header {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 4px 12px;
+  margin-bottom: 4px;
+}
+.combined-header h3 {
+  font-size: 14px; margin: 0; color: #333;
+  grid-row: 1 / 3;
+}
+.combined-rows {
+  display: contents;
+}
+.combined-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+}
+.combined-row .stat-item {
+  text-align: center;
+}
 
 /* ── toggle (checkbox) ── */
 .toggle-group { display: flex; align-items: center; gap: 10px; }
