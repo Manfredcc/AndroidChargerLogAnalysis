@@ -165,8 +165,6 @@ def upload():
     try:
         result = run_chargerlog(
             log_dir=actual_log_dir,
-            start=None,
-            end=None,
             no_cache=no_cache,
             points=True,
             downsample=500,
@@ -180,8 +178,6 @@ def upload():
         "id": analysis_id,
         "log_dir": actual_log_dir,
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "start": None,
-        "end": None,
         "points_count": result.get("points_count", 0),
         "cached": result.get("cached", False),
         "fields": result.get("fields", []),

@@ -7,7 +7,7 @@ C++ chargerlog 可执行文件的 Python 封装。
 import json
 import subprocess
 import sys
-from typing import Optional, Any
+from typing import Any
 
 from config import get_chargerlog_bin
 
@@ -23,8 +23,6 @@ class ChargerLogError(RuntimeError):
 
 def run_chargerlog(
     log_dir: str,
-    start: Optional[str] = None,
-    end: Optional[str] = None,
     no_cache: bool = False,
     points: bool = False,
     downsample: int = 0,
@@ -34,8 +32,6 @@ def run_chargerlog(
 
     Args:
         log_dir: 日志目录路径
-        start: 起始时间 HH:MM:SS (可选)
-        end: 结束时间 HH:MM:SS (可选)
         no_cache: 是否跳过缓存强制重新解析
         points: 是否输出原始数据点 (用于时序图表)
         downsample: 降采样目标点数 (0=不降采样)
@@ -61,10 +57,6 @@ def run_chargerlog(
             args.extend(["--downsample", str(downsample)])
     if no_cache:
         args.append("--no-cache")
-    if start:
-        args.extend(["--start", start])
-    if end:
-        args.extend(["--end", end])
     args.append(log_dir)
 
     try:

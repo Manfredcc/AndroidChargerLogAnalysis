@@ -30,8 +30,6 @@ def get_analysis(analysis_id: str):
     try:
         result = run_chargerlog(
             log_dir=log_dir,
-            start=None,
-            end=None,
             no_cache=False,
             points=True,
             downsample=500,

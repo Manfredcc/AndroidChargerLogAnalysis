@@ -97,8 +97,6 @@ def create_app(static_folder: str = None) -> Flask:
   .card h2 { font-size: 16px; margin-bottom: 12px; color: #333; }
   label { display: block; font-size: 13px; color: #555; margin-bottom: 4px; }
   input { width: 100%; padding: 8px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; margin-bottom: 10px; }
-  .row { display: flex; gap: 10px; }
-  .row > div { flex: 1; }
   button { padding: 8px 20px; background: #2563eb; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
   button:hover { background: #1d4ed8; }
   .err { color: #d32f2f; background: #ffeaea; padding: 10px; border-radius: 4px; margin-top: 10px; white-space: pre-wrap; }
@@ -124,10 +122,6 @@ def create_app(static_folder: str = None) -> Flask:
   <h2>新建分析</h2>
   <label>日志目录路径</label>
   <input id="log_dir" placeholder="例如: D:\Logs\chargerLog设备1" value="">
-  <div class="row">
-    <div><label>起始时间 (可选)</label><input id="start" placeholder="HH:MM:SS"></div>
-    <div><label>结束时间 (可选)</label><input id="end" placeholder="HH:MM:SS"></div>
-  </div>
   <div style="margin:10px 0">
     <label><input type="checkbox" id="no_cache"> 跳过缓存，强制重新解析</label>
   </div>
@@ -161,10 +155,6 @@ async function doUpload() {
   let res = document.getElementById('result');
   res.innerHTML = '<p class="loading">分析中...</p>';
   let body = { log_dir: document.getElementById('log_dir').value };
-  let start = document.getElementById('start').value;
-  let end = document.getElementById('end').value;
-  if (start) body.start = start;
-  if (end) body.end = end;
   if (document.getElementById('no_cache').checked) body.no_cache = true;
   try {
     let r = await fetch('/api/upload', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
@@ -193,8 +183,6 @@ async function loadAnalysis(id) {
     let d = await r.json();
     if (d.error) { res.innerHTML = '<div class="err">' + d.error + '</div>'; return; }
     document.getElementById('log_dir').value = d.log_dir || '';
-    document.getElementById('start').value = d.start || '';
-    document.getElementById('end').value = d.end || '';
     let html = '<p style="margin-top:10px">共 <b>' + d.points_count + '</b> 个数据点 '
       + (d.cached ? '<span class="badge badge-ok">来自缓存</span>' : '<span class="badge badge-miss">重新扫描</span>')
       + ' &nbsp; <small>ID: ' + d.id + '</small></p>';

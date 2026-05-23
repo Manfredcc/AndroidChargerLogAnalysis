@@ -26,8 +26,6 @@ export interface AnalysisResult {
   created_at: string
   points_count: number
   cached: boolean
-  start?: string
-  end?: string
   fields: FieldResult[]
   points: DataPoint[]
 }
@@ -49,8 +47,6 @@ export interface HistoryList {
 
 export async function upload(params: {
   log_dir: string
-  start?: string
-  end?: string
   no_cache?: boolean
 }): Promise<AnalysisResult> {
   const resp = await fetch(`${BASE}/upload`, {
