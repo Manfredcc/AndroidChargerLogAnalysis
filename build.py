@@ -11,6 +11,7 @@ import argparse
 import shutil
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -68,6 +69,17 @@ def build_pyinstaller() -> None:
     print(f"{'=' * 44}")
 
 
+def zip_dist() -> None:
+    print("\n[压缩] 生成 ChargerLogApp.zip...")
+    zip_path = DIST.parent / "ChargerLogApp.zip"
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for f in DIST.rglob("*"):
+            arcname = f.relative_to(DIST.parent)
+            zf.write(f, arcname)
+    size_mb = zip_path.stat().st_size / (1024 * 1024)
+    print(f"  -> {zip_path}  ({size_mb:.1f} MB)")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="ChargerLogAnalysis 打包脚本")
     parser.add_argument("--clean", action="store_true", help="清理旧构建产物")
@@ -95,6 +107,7 @@ def main() -> None:
         print("\n[跳过] 前端构建")
 
     build_pyinstaller()
+    zip_dist()
 
 
 if __name__ == "__main__":
