@@ -8,7 +8,7 @@
 """
 
 import argparse
-import shlex
+import platform
 import shutil
 import subprocess
 import sys
@@ -24,8 +24,13 @@ WEB_DIR = ROOT / "web"
 def run(cmd: list[str], cwd: Path | None = None, desc: str = "") -> None:
     print(f"  {desc or ' '.join(cmd)}")
     # shell=True 确保 Windows 上能找到 .cmd/.bat 文件（如 npm, cmake）
-    # shlex.quote 保护含空格的参数（如 "MinGW Makefiles"）
-    subprocess.run(" ".join(shlex.quote(a) for a in cmd), cwd=cwd, check=True, shell=True)
+    # 使用平台原生引号处理，避免含空格参数被拆分
+    if platform.system() == "Windows":
+        cmd_str = subprocess.list2cmdline(cmd)
+    else:
+        import shlex
+        cmd_str = " ".join(shlex.quote(a) for a in cmd)
+    subprocess.run(cmd_str, cwd=cwd, check=True, shell=True)
 
 
 def build_cpp() -> None:
