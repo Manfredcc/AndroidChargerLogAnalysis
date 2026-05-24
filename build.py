@@ -31,7 +31,21 @@ def build_cpp() -> None:
     CORE_BUILD.mkdir(parents=True, exist_ok=True)
 
     if not (CORE_BUILD / "CMakeCache.txt").exists():
-        run(["cmake", "-G", "MinGW Makefiles", ".."], cwd=CORE_BUILD, desc="cmake 配置")
+        # 优先 MinGW（依赖少体积小），不可用时回退到平台默认生成器
+        for gen, gen_desc in [(["-G", "MinGW Makefiles"], "MinGW"), ([], "默认")]:
+            try:
+                run(["cmake"] + gen + [".."], cwd=CORE_BUILD, desc=f"cmake 配置 ({gen_desc})")
+                break
+            except subprocess.CalledProcessError:
+                # 清理失败的 CMakeCache，尝试下一个生成器
+                for f in (CORE_BUILD / "CMakeCache.txt",):
+                    if f.exists():
+                        f.unlink()
+                if gen:
+                    print(f"  MinGW 不可用，回退到平台默认生成器...")
+                    continue
+                raise
+
     run(["cmake", "--build", ".", "--config", "Release"], cwd=CORE_BUILD, desc="cmake 构建")
     print("  -> chargerlog.exe 编译完成")
 
