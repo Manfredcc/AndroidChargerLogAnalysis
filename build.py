@@ -37,26 +37,26 @@ def build_cpp() -> None:
     print("\n[1/3] 编译 C++ chargerlog...")
     CORE_BUILD.mkdir(parents=True, exist_ok=True)
 
-    # 优先 MinGW，不可用或失败时自动回退到平台默认生成器
-    for attempt in range(2):
-        gen, gen_desc = (["-G", "MinGW Makefiles"], "MinGW") if attempt == 0 else ([], "默认")
-        try:
-            run(["cmake"] + gen + [".."], cwd=CORE_BUILD, desc=f"cmake 配置 ({gen_desc})")
-            run(["cmake", "--build", ".", "--config", "Release"], cwd=CORE_BUILD, desc="cmake 构建")
-            print("  -> chargerlog.exe 编译完成")
-            return
-        except subprocess.CalledProcessError:
-            # 清空整个 build 目录后重试下一个生成器
-            print(f"  {gen_desc} 构建失败，清理重试...")
-            for p in CORE_BUILD.iterdir():
-                if p.is_dir():
-                    shutil.rmtree(p, ignore_errors=True)
-                else:
-                    p.unlink()
-            if attempt == 0:
-                print(f"  回退到平台默认生成器...")
-                continue
-            sys.exit("ERROR: C++ 编译失败")
+    if (CORE_BUILD / "CMakeCache.txt").exists():
+        # 已有缓存，直接增量构建（CMake 自动检测 CMakeLists.txt 变更）
+        run(["cmake", "--build", ".", "--config", "Release"], cwd=CORE_BUILD, desc="cmake 构建")
+    else:
+        # 首次配置：优先 MinGW，不可用时回退到平台默认生成器
+        for attempt in range(2):
+            gen, gen_desc = (["-G", "MinGW Makefiles"], "MinGW") if attempt == 0 else ([], "默认")
+            try:
+                run(["cmake"] + gen + [".."], cwd=CORE_BUILD, desc=f"cmake 配置 ({gen_desc})")
+                run(["cmake", "--build", ".", "--config", "Release"], cwd=CORE_BUILD, desc="cmake 构建")
+                break
+            except subprocess.CalledProcessError:
+                shutil.rmtree(str(CORE_BUILD), ignore_errors=True)
+                CORE_BUILD.mkdir(parents=True, exist_ok=True)
+                if attempt == 0:
+                    print(f"  MinGW 不可用，回退到平台默认生成器...")
+                    continue
+                sys.exit("ERROR: C++ 编译失败")
+
+    print("  -> chargerlog.exe 编译完成")
 
 
 def build_web() -> None:
