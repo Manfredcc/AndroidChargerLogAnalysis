@@ -14,9 +14,11 @@ if web_dist.exists():
 
 # ── C++ 可执行文件 ──────────────────────────────────────
 binaries = []
-chargerlog_exe = ROOT / "core" / "build" / "chargerlog.exe"
-if chargerlog_exe.exists():
-    binaries.append((str(chargerlog_exe), "."))
+for sub in ["", "Release", "Debug"]:
+    chargerlog_exe = ROOT / "core" / "build" / sub / "chargerlog.exe" if sub else ROOT / "core" / "build" / "chargerlog.exe"
+    if chargerlog_exe.exists():
+        binaries.append((str(chargerlog_exe), "."))
+        break
 
 a = Analysis(
     [str(ROOT / "launcher.py")],

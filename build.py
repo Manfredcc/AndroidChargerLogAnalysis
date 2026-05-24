@@ -58,15 +58,24 @@ def build_web() -> None:
     print("  -> web/dist/ 构建完成")
 
 
+def _find_chargerlog_exe() -> Path | None:
+    """查找 chargerlog.exe — MinGW 输出到 build/，MSVC 输出到 build/Release/。"""
+    for sub in ["", "Release", "Debug"]:
+        p = CORE_BUILD / sub / "chargerlog.exe" if sub else CORE_BUILD / "chargerlog.exe"
+        if p.exists():
+            return p
+    return None
+
+
 def build_pyinstaller() -> None:
     print("\n[3/3] PyInstaller 打包...")
 
     web_dist = ROOT / "web" / "dist"
-    chargerlog_exe = CORE_BUILD / "chargerlog.exe"
+    chargerlog_exe = _find_chargerlog_exe()
 
     if not web_dist.exists():
         sys.exit("ERROR: web/dist/ 不存在，请先构建前端或去掉 --skip-web")
-    if not chargerlog_exe.exists():
+    if chargerlog_exe is None:
         sys.exit("ERROR: chargerlog.exe 不存在，请先编译 C++ 或去掉 --skip-cpp")
 
     run(["pyinstaller", "-y", str(ROOT / "chargerlog.spec")], cwd=ROOT, desc="pyinstaller")
