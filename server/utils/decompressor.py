@@ -13,18 +13,22 @@
 流程：
   1. 创建同名目录 (log.tar.gz → log/)
   2. 将归档文件移动到目录中作为备份
-  3. 解压备份中的归档文件到该目录
-  4. 递归查找子目录中的 .gz 文件，逐个解压并删掉原始 .gz
+  3. 解压备份中的归档文件到该目录 (单次遍历 + 路径穿越检测)
+  4. 并行解压子目录中的 .gz 文件，删掉原始 .gz
   5. 顶层备份归档保留不动
 """
 
+import concurrent.futures
 import os
 import shutil
 import gzip
+import time
 import zipfile
 import tarfile
 from pathlib import Path
 
+# gzip 解压缓冲区: 2MB (SSD 上比默认 1MB 更高效)
+_GZ_BUFFER_SIZE = 2 * 1024 * 1024
 
 _ARCHIVE_EXTENSIONS = [
     ".tar.gz",
@@ -54,12 +58,13 @@ def _is_safe_path(dest: Path, member_path: str) -> bool:
     return str(resolved).startswith(str(dest.resolve()))
 
 
-def decompress_archive(archive_path: str) -> str:
+def decompress_archive(archive_path: str, verbose: bool = False) -> str:
     """
     解压日志归档，递归处理嵌套 .gz 文件。
 
     Args:
         archive_path: 归档文件路径 (.zip / .tar.gz / .tar.bz2 / .tar.xz)
+        verbose: 是否打印耗时信息，默认关闭
 
     Returns:
         解压后目录的路径
@@ -73,22 +78,20 @@ def decompress_archive(archive_path: str) -> str:
     if not archive.exists():
         raise FileNotFoundError(f"归档文件不存在: {archive_path}")
 
-    # 提前检查格式
     fname_lower = archive.name.lower()
     SUPPORTED_ZIP = ".zip"
     SUPPORTED_TAR = (".tar.gz", ".tar.bz2", ".tar.xz", ".tgz", ".tar")
     if not (fname_lower.endswith(SUPPORTED_ZIP) or fname_lower.endswith(SUPPORTED_TAR)):
         raise ValueError(f"不支持的归档格式: {archive.name} (支持: .zip, .tar.gz, .tar.bz2, .tar.xz)")
 
-    # ── 1. 创建同名目录 ────────────────────────────────────
+    t0 = time.perf_counter() if verbose else 0
+
     out_dir = archive.parent / strip_archive_ext(archive.name)
     out_dir.mkdir(exist_ok=True)
 
-    # ── 2. 移动归档到目录中作为备份 ──────────────────────────
     backup_path = out_dir / archive.name
     shutil.move(str(archive), str(backup_path))
 
-    # ── 3. 解压归档内容 (从备份路径读取) ────────────────────
     try:
         if fname_lower.endswith(".zip"):
             _extract_zip(backup_path, out_dir)
@@ -99,26 +102,49 @@ def decompress_archive(archive_path: str) -> str:
             shutil.rmtree(str(out_dir))
         raise RuntimeError(f"解压失败: {e}") from e
 
-    # ── 4. 递归解压嵌套 .gz (排除顶层备份) ─────────────────
-    for gz_path in out_dir.rglob("*.gz"):
-        if gz_path == backup_path:
-            continue  # 保留顶层备份
-        _decompress_gz_in_place(gz_path)
+    t1 = time.perf_counter() if verbose else 0
+    if verbose:
+        print(f"  [解压] 顶层归档: {t1 - t0:.2f}s")
+
+    gz_list = [
+        p for p in out_dir.rglob("*.gz")
+        if p != backup_path
+    ]
+
+    if not gz_list:
+        if verbose:
+            print(f"  [解压] 总耗时: {time.perf_counter() - t0:.2f}s")
+        return str(out_dir)
+
+    max_workers = min(os.cpu_count() or 4, len(gz_list), 8)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = {pool.submit(_decompress_gz_in_place, p): p for p in gz_list}
+        for fut in concurrent.futures.as_completed(futures):
+            exc = fut.exception()
+            if exc is not None:
+                for remaining in futures:
+                    remaining.cancel()
+                raise RuntimeError(f"解压失败 {futures[fut]}: {exc}") from exc
+
+    if verbose:
+        t2 = time.perf_counter()
+        print(f"  [解压] 嵌套 .gz ({len(gz_list)} 个, {max_workers} 线程): {t2 - t1:.2f}s")
+        print(f"  [解压] 总耗时: {t2 - t0:.2f}s")
 
     return str(out_dir)
 
 
 def _extract_zip(archive: Path, out_dir: Path) -> None:
-    """安全解压 .zip 文件。"""
+    """单次遍历解压 .zip，同时做路径穿越检测。"""
     with zipfile.ZipFile(str(archive), "r") as zf:
         for name in zf.namelist():
             if not _is_safe_path(out_dir, name):
                 raise RuntimeError(f"路径穿越检测: {name}")
-        zf.extractall(str(out_dir))
+            zf.extract(name, str(out_dir))
 
 
 def _extract_tar(archive: Path, out_dir: Path) -> None:
-    """安全解压 .tar.* 文件。"""
+    """单次遍历解压 .tar.*，同时做路径穿越检测。"""
     mode_map = {
         ".tar.gz": "r:gz",
         ".tgz": "r:gz",
@@ -130,19 +156,18 @@ def _extract_tar(archive: Path, out_dir: Path) -> None:
     mode = mode_map.get(mode_key, "r:*")
 
     with tarfile.open(str(archive), mode) as tf:
-        for member in tf.getmembers():
+        for member in tf:
             if not _is_safe_path(out_dir, member.name):
                 raise RuntimeError(f"路径穿越检测: {member.name}")
-        tf.extractall(str(out_dir))
+            tf.extract(member, str(out_dir))
 
 
 def _decompress_gz_in_place(gz_path: Path) -> None:
     """解压单个 .gz 文件输出到同路径 (去掉 .gz 后缀)，然后删除原 .gz。"""
-    out_path = gz_path.with_suffix("")  # xx1.gz → xx1
+    out_path = gz_path.with_suffix("")
 
-    # 如果目标文件已存在，在后面加序号避免覆盖
     if out_path.exists():
-        stem = gz_path.stem  # 去掉 .gz 后的文件名
+        stem = gz_path.stem
         counter = 1
         while True:
             candidate = gz_path.with_name(f"{stem}.{counter}")
@@ -151,14 +176,10 @@ def _decompress_gz_in_place(gz_path: Path) -> None:
                 break
             counter += 1
 
-    try:
-        with gzip.open(str(gz_path), "rb") as f_in:
-            with open(str(out_path), "wb") as f_out:
-                shutil.copyfileobj(f_in, f_out)
-        gz_path.unlink()  # 删除原始 .gz
-    except Exception as e:
-        # 解压失败时保持原样，不删除
-        raise RuntimeError(f"解压失败 {gz_path}: {e}") from e
+    with gzip.open(str(gz_path), "rb") as f_in:
+        with open(str(out_path), "wb") as f_out:
+            shutil.copyfileobj(f_in, f_out, length=_GZ_BUFFER_SIZE)
+    gz_path.unlink()
 
 
 __all__ = ["decompress_archive", "strip_archive_ext"]
@@ -167,14 +188,18 @@ __all__ = ["decompress_archive", "strip_archive_ext"]
 if __name__ == "__main__":
     import sys
 
-    if len(sys.argv) != 2:
-        print("用法: python decompressor.py <归档文件路径>")
+    args = sys.argv[1:]
+    verbose = "--verbose" in args or "-v" in args
+    paths = [a for a in args if a not in ("--verbose", "-v")]
+
+    if len(paths) != 1:
+        print("用法: python decompressor.py [--verbose] <归档文件路径>")
         print("示例: python decompressor.py D:\\Logs\\chargerLog设备1.zip")
         sys.exit(1)
 
-    archive_path = sys.argv[1]
+    archive_path = paths[0]
     try:
-        out_dir = decompress_archive(archive_path)
+        out_dir = decompress_archive(archive_path, verbose=verbose)
         print(f"解压完成: {out_dir}")
     except Exception as e:
         print(f"解压失败: {e}", file=sys.stderr)
