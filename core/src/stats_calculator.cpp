@@ -1,4 +1,4 @@
-#include "chargerlog/base_charger_parser.h"
+#include "chargerlog/stats_calculator.h"
 
 #include <algorithm>
 #include <cmath>

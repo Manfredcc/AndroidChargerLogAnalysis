@@ -30,51 +30,6 @@ public:
     virtual std::vector<std::string> supportedFields() const = 0;
 };
 
-/// 统计计算器
-/// 对一组 ChargerDataPoint 按指定时间范围和字段计算统计值
-class StatsCalculator {
-public:
-    /// 计算某字段在时间范围内的统计值
-    /// @param points  数据点集合
-    /// @param field   字段名
-    /// @param start_ms 起始时间 (含, 默认从第一个)
-    /// @param end_ms   结束时间 (含, 默认到最后一个)
-    static FieldStats calcField(
-        const std::vector<ChargerDataPoint>& points,
-        const std::string& field,
-        int64_t start_ms = 0,
-        int64_t end_ms = INT64_MAX);
-
-    /// 计算所有字段的统计值
-    static std::vector<FieldStats> calcAllFields(
-        const std::vector<ChargerDataPoint>& points,
-        const std::vector<std::string>& fields,
-        int64_t start_ms = 0,
-        int64_t end_ms = INT64_MAX);
-
-    /// 计算整段时间窗口的统计 (按窗口滑动)
-    static std::vector<FieldStats> calcWindowedStats(
-        const std::vector<ChargerDataPoint>& points,
-        const std::string& field,
-        int64_t window_ms,
-        int64_t step_ms);
-
-    /// 降采样：从 points 中等距取出最多 target_count 个点
-    /// 保证首尾点始终保留，适合前端折线图渲染
-    static std::vector<ChargerDataPoint> downsample(
-        const std::vector<ChargerDataPoint>& points,
-        size_t target_count);
-
-    /// 计算某字段超过阈值的时间段和占比
-    /// 使用线性插值精确定位阈值交叉点
-    static ThresholdResult calcThreshold(
-        const std::vector<ChargerDataPoint>& points,
-        const std::string& field,
-        double threshold,
-        int64_t start_ms = 0,
-        int64_t end_ms = INT64_MAX);
-};
-
 }  // namespace chargerlog
 
 #endif  // CHARGERLOG_BASE_CHARGER_PARSER_H

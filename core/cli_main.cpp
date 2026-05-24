@@ -17,6 +17,8 @@
 
 #include "chargerlog/healthd_parser.h"
 #include "chargerlog/base_charger_parser.h"
+#include "chargerlog/stats_calculator.h"
+#include "chargerlog/parser_factory.h"
 #include "chargerlog/cache_manager.h"
 
 namespace fs = std::filesystem;
@@ -70,7 +72,7 @@ static bool likely_text_file(const fs::path& path) {
 /// 读取文件所有行, 通过 parser 解析, 收集数据点
 static void collect_points(
     const fs::path& file_path,
-    const HealthdParser& parser,
+    const BaseParser& parser,
     std::vector<ChargerDataPoint>& out_points,
     bool quiet = false) {
 
@@ -108,7 +110,7 @@ static void collect_points(
 /// 递归扫描目录
 static void scan_directory(
     const fs::path& dir_path,
-    const HealthdParser& parser,
+    const BaseParser& parser,
     std::vector<ChargerDataPoint>& out_points,
     bool quiet = false) {
 
@@ -230,6 +232,7 @@ int main(int argc, char* argv[]) {
     size_t downsample_count = 0;
     int64_t start_ms = 0;
     int64_t end_ms = INT64_MAX;
+    std::string platform_name = "android_healthd";
     fs::path log_dir;
 
     struct ThresholdArg { std::string field; double value; };
@@ -273,21 +276,37 @@ int main(int argc, char* argv[]) {
             ta.field = spec.substr(0, eq_pos);
             ta.value = std::stod(spec.substr(eq_pos + 1));
             cli_thresholds.push_back(ta);
+        } else if (arg == "--platform" && i + 1 < argc) {
+            i++;
+            platform_name = argv[i];
         } else if (arg[0] != '-') {
             log_dir = path_from_arg(argv[i]);
         } else {
-            std::cerr << "用法: chargerlog [--json] [--points] [--downsample N] [--no-cache] [--start HH:MM:SS] [--end HH:MM:SS] [--threshold field=value]... <日志目录>" << std::endl;
+            std::cerr << "用法: chargerlog [--platform name] [--json] [--points] [--downsample N] [--no-cache] [--start HH:MM:SS] [--end HH:MM:SS] [--threshold field=value]... <日志目录>" << std::endl;
             return 1;
         }
     }
 
     if (log_dir.empty()) {
-        std::cerr << "用法: chargerlog [--json] [--points] [--downsample N] [--no-cache] [--start HH:MM:SS] [--end HH:MM:SS] [--threshold field=value]... <日志目录>" << std::endl;
+        std::cerr << "用法: chargerlog [--platform name] [--json] [--points] [--downsample N] [--no-cache] [--start HH:MM:SS] [--end HH:MM:SS] [--threshold field=value]... <日志目录>" << std::endl;
         return 1;
     }
 
-    // ── 1. 扫描目录, 解析所有日志 ──────────────────────────
-    HealthdParser parser;
+    // ── 创建解析器 (根据 --platform 配置) ───────────────────
+    auto parser = ParserFactory::create(platform_name);
+    if (!parser) {
+        std::cerr << "错误: 未知平台 '" << platform_name << "'" << std::endl;
+        std::cerr << "可用平台: ";
+        bool first = true;
+        for (const auto& p : ParserFactory::availablePlatforms()) {
+            if (!first) std::cerr << ", ";
+            std::cerr << p;
+            first = false;
+        }
+        std::cerr << std::endl;
+        return 1;
+    }
+
     std::vector<ChargerDataPoint> all_points;
     bool from_cache = false;
 
@@ -310,7 +329,7 @@ int main(int argc, char* argv[]) {
 
     // 缓存未命中时扫描
     if (all_points.empty()) {
-        scan_directory(log_dir, parser, all_points, json_mode);
+        scan_directory(log_dir, *parser, all_points, json_mode);
 
         // 扫描后写入缓存
         if (!all_points.empty() && !no_cache && cache_fp != 0) {

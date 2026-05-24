@@ -21,6 +21,7 @@ add_library(chargerlog_core
     src/stats_calculator.cpp
     src/project_config.cpp
     src/cache_manager.cpp
+    src/parser_factory.cpp
 )
 
 target_include_directories(chargerlog_core

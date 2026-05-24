@@ -1,5 +1,7 @@
 #include "chargerlog/healthd_parser.h"
 #include "chargerlog/base_charger_parser.h"
+#include "chargerlog/stats_calculator.h"
+#include "chargerlog/parser_factory.h"
 #include "chargerlog/project_config.h"
 
 #include <cassert>
@@ -178,6 +180,34 @@ static bool test_project_config() {
     return true;
 }
 
+static bool test_parser_factory_create_healthd() {
+    auto parser = ParserFactory::create("android_healthd");
+    ASSERT(parser != nullptr, "factory should create healthd parser");
+    ASSERT(parser->platformName() == "android_healthd", "platform name matches");
+
+    // 验证创建的解析器确实能工作
+    ASSERT(parser->canParse("healthd: battery l=50 v=4000"), "created parser can parse");
+    return true;
+}
+
+static bool test_parser_factory_create_unknown() {
+    auto parser = ParserFactory::create("nonexistent_platform");
+    ASSERT(parser == nullptr, "unknown platform returns nullptr");
+    return true;
+}
+
+static bool test_parser_factory_available_platforms() {
+    auto platforms = ParserFactory::availablePlatforms();
+    ASSERT(!platforms.empty(), "available platforms not empty");
+
+    bool has_healthd = false;
+    for (const auto& p : platforms) {
+        if (p == "android_healthd") has_healthd = true;
+    }
+    ASSERT(has_healthd, "available platforms include android_healthd");
+    return true;
+}
+
 static bool test_threshold_calculation() {
     // 创建测试数据: 0ms=3900, 1000ms=4100, 2000ms=4200, 3000ms=4300, 4000ms=4100, 5000ms=3900
     std::vector<ChargerDataPoint> points;
@@ -232,6 +262,9 @@ int main() {
     all_pass &= TEST(data_point_has_get);
     all_pass &= TEST(stats_calculator);
     all_pass &= TEST(project_config);
+    all_pass &= TEST(parser_factory_create_healthd);
+    all_pass &= TEST(parser_factory_create_unknown);
+    all_pass &= TEST(parser_factory_available_platforms);
     all_pass &= TEST(threshold_calculation);
 
     std::cout << "\n==== " << (all_pass ? "ALL PASS" : "SOME FAILED") << " ====" << std::endl;
