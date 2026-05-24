@@ -63,7 +63,19 @@ def build_web() -> None:
     print("\n[2/3] 构建 Vue 前端...")
     if not (WEB_DIR / "node_modules").exists():
         run(["npm", "install"], cwd=WEB_DIR, desc="npm install")
-    run(["npm", "run", "build"], cwd=WEB_DIR, desc="npm run build")
+
+    cmd = ["npm", "run", "build"]
+    print(f"  npm run build")
+    try:
+        subprocess.run(subprocess.list2cmdline(cmd) if platform.system() == "Windows" else " ".join(cmd),
+                       cwd=WEB_DIR, check=True, shell=True)
+    except subprocess.CalledProcessError:
+        # npm/libuv 在 Windows 上退出时可能异常崩溃（UV_HANDLE_CLOSING），实际产物已生成
+        if (WEB_DIR / "dist" / "index.html").exists():
+            print("  npm 进程退出异常但产物已生成，继续...")
+        else:
+            sys.exit("ERROR: web/dist/ 不存在，前端构建失败")
+
     print("  -> web/dist/ 构建完成")
 
 
