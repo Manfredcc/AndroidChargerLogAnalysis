@@ -4,6 +4,11 @@ project(chargerlog_core VERSION 0.1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# MSVC: 强制 UTF-8 编码，避免中文注释/字符串编译错误 (C4819, C2001)
+if(MSVC)
+    add_compile_options("/utf-8")
+endif()
+
 # MinGW: 静态链接运行时库，避免 DLL 依赖
 if(MINGW)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")
